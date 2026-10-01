@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crea la tua miniatura laurea – 3B Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5ede0;
+    --card: #fffaf2;
+    --ink: #1f2a44;
+    --muted: #6b6457;
+    --line: #e4d8c4;
+    --accent: #c8102e;
+    --accent-ink: #fff;
+    --gold: #e9b824;
+    --ok: #2f7d4f;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 Inter, system-ui, sans-serif;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 120px; }
+  header { text-align: center; padding: 18px 0 8px; }
+  .logo { font: 800 14px/1 Fraunces, serif; letter-spacing: .25em; color: var(--muted); }
+  h1 { font: 800 clamp(30px, 8vw, 42px)/1.05 Fraunces, serif; margin: 10px 0 8px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 auto; max-width: 30em; }
+  .price {
+    display: inline-flex; gap: 10px; align-items: center; margin-top: 14px;
+    background: var(--gold); color: var(--ink); border-radius: 999px; padding: 6px 16px; font-weight: 600;
+  }
+  .price b { font: 800 22px/1 Fraunces, serif; }
+
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-top: 16px; }
+  section h2 { font: 600 20px/1.2 Fraunces, serif; margin: 0 0 4px; display: flex; gap: 10px; align-items: center; }
+  .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: var(--card); font: 600 14px Inter, sans-serif; flex: none; }
+  .hint { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 6px; }
+  label .opt { font-weight: 400; color: var(--muted); }
+  input[type=text], input[type=tel], input[type=date], textarea, select {
+    width: 100%; font: inherit; color: var(--ink); background: #fff;
+    border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--ink); }
+  textarea { min-height: 84px; resize: vertical; }
+
+  .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { margin: 0; text-align: center; padding: 12px 8px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; font-weight: 500; }
+  .seg input:checked + label { border-color: var(--ink); background: var(--ink); color: var(--card); }
+  .seg input:focus-visible + label { outline: 3px solid var(--gold); }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sw { position: relative; }
+  .sw input { position: absolute; opacity: 0; pointer-events: none; }
+  .sw label {
+    margin: 0; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px;
+    border: 1.5px solid var(--line); border-radius: 999px; background: #fff; cursor: pointer; font-weight: 500; font-size: 14px;
+  }
+  .dot { width: 24px; height: 24px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); flex: none; }
+  .sw input:checked + label { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; }
+  .sw input:focus-visible + label { outline: 3px solid var(--gold); }
+  .altro { margin-top: 8px; display: none; }
+  .altro.on { display: block; }
+
+  .preview { margin-top: 14px; background: #fff; border: 1px dashed var(--line); border-radius: 12px; padding: 10px; }
+  .preview svg { width: 100%; height: auto; display: block; }
+  .preview p { margin: 6px 0 0; font-size: 13px; color: var(--muted); text-align: center; }
+
+  .drop {
+    display: grid; place-items: center; text-align: center; gap: 6px; padding: 22px 14px;
+    border: 2px dashed var(--line); border-radius: 14px; background: #fff; cursor: pointer; color: var(--muted);
+  }
+  .drop strong { color: var(--ink); }
+  .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .thumbs:empty { display: none; }
+  .th { position: relative; aspect-ratio: 1; }
+  .th img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; display: block; }
+  .th button {
+    position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 50%; border: 0;
+    background: rgba(31,42,68,.85); color: #fff; font-size: 16px; line-height: 1; cursor: pointer;
+  }
+  #foto { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+  .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; font-size: 14px; }
+  .check input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--ink); }
+
+  .info { display: grid; gap: 8px; font-size: 14px; }
+  .info div { display: flex; gap: 10px; }
+
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  .bar .in { max-width: 640px; margin: 0 auto; display: flex; gap: 12px; align-items: center; }
+  .bar .tot { flex: 1; font-size: 13px; color: var(--muted); }
+  .bar .tot b { display: block; color: var(--ink); font: 800 20px/1.1 Fraunces, serif; }
+  button.cta {
+    font: 600 16px Inter, sans-serif; background: var(--accent); color: var(--accent-ink); border: 0;
+    border-radius: 999px; padding: 14px 22px; cursor: pointer; min-width: 170px;
+  }
+  button.cta:disabled { opacity: .55; cursor: progress; }
+  .err { color: var(--accent); font-size: 14px; margin-top: 8px; min-height: 1em; }
+
+  .done { text-align: center; padding: 40px 18px; }
+  .done .big { font-size: 56px; }
+  .done h2 { justify-content: center; font-size: 26px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">3B STUDIO</div>
+    <h1>Crea la tua <span>miniatura laurea</span></h1>
+    <p class="sub">Raccontaci come sarà il grande giorno: realizziamo a mano la miniatura in stile Funko Pop con la sua basetta personalizzata.</p>
+    <div class="price"><b>40€</b> spedizione inclusa</div>
+  </header>
+
+  <form id="f" novalidate>
+    <section>
+      <h2><span class="n">1</span> La basetta</h2>
+      <p class="hint">Il nome e il corso vengono scritti in rilievo sulla basetta.</p>
+      <div class="seg" role="radiogroup" aria-label="Titolo">
+        <input type="radio" name="titolo" id="t-m" value="Dott."><label for="t-m">Dott.</label>
+        <input type="radio" name="titolo" id="t-f" value="Dott.ssa"><label for="t-f">Dott.ssa</label>
+      </div>
+      <label for="nome">Nome e cognome</label>
+      <input type="text" id="nome" name="nome" placeholder="es. Giulia De Simone" autocomplete="off" maxlength="40">
+      <label>Tipo di laurea</label>
+      <div class="seg" role="radiogroup" aria-label="Tipo di laurea">
+        <input type="radio" name="tipo" id="tp-l" value="Laurea" checked><label for="tp-l">Laurea in…</label>
+        <input type="radio" name="tipo" id="tp-m" value="Magistrale"><label for="tp-m">Magistrale in…</label>
+      </div>
+      <label for="corso">Corso</label>
+      <input type="text" id="corso" name="corso" placeholder="es. Psicologia" autocomplete="off" maxlength="40">
+      <label for="dataLaurea">Data della laurea <span class="opt">(se la sai)</span></label>
+      <input type="date" id="dataLaurea" name="dataLaurea">
+
+      <div class="preview" aria-hidden="true">
+        <svg viewBox="0 0 106 58" id="base">
+          <rect x="0" y="0" width="106" height="58" rx="1.5" fill="#d9cfbf"/>
+          <rect x="55" y="4" width="50" height="53" rx="1" fill="#c7bba7"/>
+          <g fill="#8f8473" opacity=".55">
+            <circle cx="27" cy="18" r="9"/>
+            <rect x="18" y="26" width="18" height="16" rx="5"/>
+          </g>
+          <text id="pv-titolo" x="2" y="47" font-family="Georgia, serif" font-weight="700" font-size="6" fill="#1f2a44">Dott.</text>
+          <text id="pv-nome" x="2" y="55" font-family="Georgia, serif" font-weight="700" font-size="6" fill="#1f2a44">Nome Cognome</text>
+          <g font-family="Georgia, serif" font-weight="700" fill="#1f2a44" text-anchor="middle">
+            <text id="pv-tipo" x="80" y="20" font-size="9">LAUREA</text>
+            <text x="80" y="31" font-size="8">IN</text>
+            <text id="pv-corso" x="80" y="44" font-size="8">CORSO</text>
+          </g>
+        </svg>
+        <p>Anteprima della basetta (vista dall'alto) – la miniatura va a sinistra</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="n">2</span> Il look</h2>
+      <p class="hint">Scegli i colori: li usiamo per vestire la miniatura.</p>
+
+      <label>Cosa indosserà</label>
+      <select id="abitoTipo">
+        <option>giacca e pantaloni</option>
+        <option>tailleur con gonna</option>
+        <option>tailleur con pantaloni</option>
+        <option>vestito</option>
+      </select>
+      <label>Colore abito</label>
+      <div class="swatches" data-group="abitoColore"></div>
+      <input type="text" class="altro" id="abitoColore-altro" placeholder="Scrivi il colore">
+
+      <label>Camicia <span class="opt">(se c'è)</span></label>
+      <div class="swatches" data-group="camicia" data-none="Nessuna camicia"></div>
+      <input type="text" class="altro" id="camicia-altro" placeholder="Scrivi il colore">
+
+      <label>Cravatta o papillon</label>
+      <div class="seg" role="radiogroup" aria-label="Cravatta">
+        <input type="radio" name="cravattaTipo" id="cr-c" value="cravatta"><label for="cr-c">Cravatta</label>
+        <input type="radio" name="cravattaTipo" id="cr-p" value="papillon"><label for="cr-p">Papillon</label>
+        <input type="radio" name="cravattaTipo" id="cr-n" value="" checked><label for="cr-n">Nessuna</label>
+      </div>
+      <div id="cravattaColoreBox" hidden>
+        <label>Colore cravatta / papillon</label>
+        <div class="swatches" data-group="cravattaColore"></div>
+        <input type="text" class="altro" id="cravattaColore-altro" placeholder="Scrivi il colore">
+      </div>
+
+      <label>Colore della tesi</label>
+      <div class="swatches" data-group="tesi"></div>
+      <input type="text" class="altro" id="tesi-altro" placeholder="Scrivi il colore">
+
+      <label for="dettagli">Dettagli speciali <span class="opt">(facoltativo)</span></label>
+      <textarea id="dettagli" maxlength="400" placeholder="es. occhiali, barba, capelli raccolti, una luna ai piedi, nastro viola nella corona…"></textarea>
+    </section>
+
+    <section>
+      <h2><span class="n">3</span> Le foto</h2>
+      <p class="hint">Fino a 5 foto: almeno una del viso frontale e ben illuminata. Puoi aggiungere anche l'abito, la pettinatura o un dettaglio che vuoi nella miniatura.</p>
+      <div class="thumbs" id="thumbs"></div>
+      <label class="drop" for="foto" id="dropLabel">
+        <span id="dropTxt"><strong>Tocca per aggiungere foto</strong><br>puoi sceglierne più di una</span>
+      </label>
+      <input type="file" id="foto" accept="image/*" multiple>
+    </section>
+
+    <section>
+      <h2><span class="n">4</span> Come ti ricontattiamo</h2>
+      <label for="instagram">Il tuo profilo Instagram</label>
+      <input type="text" id="instagram" placeholder="@iltuonome" autocomplete="off" maxlength="40">
+      <label for="telefono">Telefono <span class="opt">(facoltativo)</span></label>
+      <input type="tel" id="telefono" placeholder="es. 333 1234567" maxlength="20">
+
+      <div class="info" style="margin-top:16px">
+        <div>🎨 <span>Ti mandiamo un'<b>anteprima</b> su Instagram entro 24-48 ore: <b>non paghi nulla adesso</b>.</span></div>
+        <div>💳 <span>Se ti piace, paghi con bonifico anticipato e partiamo con la stampa.</span></div>
+        <div>⏱️ <span>Lavorazione 7-10 giorni lavorativi + spedizione 3-5 giorni.</span></div>
+        <div>📦 <span>Scatola standard in plexiglass inclusa, quella personalizzata no.</span></div>
+      </div>
+
+      <label class="check" style="margin-top:16px">
+        <input type="checkbox" id="privacy">
+        <span>Acconsento all'uso delle foto e dei dati solo per realizzare la miniatura. Le foto vengono cancellate dopo la consegna.</span>
+      </label>
+      <div class="err" id="err" role="alert"></div>
+    </section>
+  </form>
+
+  <div class="done" id="done" hidden>
+    <div class="big">🎓</div>
+    <h2>Richiesta inviata!</h2>
+    <p class="sub">Grazie! Ti scriviamo su Instagram con l'anteprima della tua miniatura entro 24-48 ore.</p>
+  </div>
+</div>
+
+<div class="bar" id="bar">
+  <div class="in">
+    <div class="tot">Totale<b>40€</b></div>
+    <button class="cta" id="invia" type="button">Invia richiesta</button>
+  </div>
+</div>
+
+<script>
+const ENDPOINT = 'https://script.google.com/macros/s/AKfycbxM-UuiAhNS3cSSan65OcB-JidujbIa21msMNy-zhBxjLzVxLIimnrPVhsyDf4DVrd-5g/exec';
+const COLORI = [
+  ['nero', '#111'], ['blu notte', '#1b2546'], ['blu', '#1f4fa8'], ['azzurro', '#7fb5e6'],
+  ['grigio scuro', '#4a4a4a'], ['grigio chiaro', '#bdbdbd'], ['bianco', '#fff'], ['beige', '#d8c3a0'],
+  ['marrone', '#6b4226'], ['bordeaux', '#6d1a2a'], ['rosso', '#c8102e'], ['rosa', '#f2a7c3'],
+  ['viola', '#6c3aa8'], ['verde scuro', '#1f4d33'], ['verde', '#3c9a5f'], ['giallo', '#f2c230'], ['oro', '#c9a227']
+];
+
+document.querySelectorAll('.swatches').forEach(box => {
+  const g = box.dataset.group;
+  const opts = COLORI.slice();
+  if (box.dataset.none) opts.unshift([box.dataset.none, 'transparent']);
+  opts.push(['altro…', 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)']);
+  opts.forEach(([nome, col], i) => {
+    const id = g + '-' + i;
+    box.insertAdjacentHTML('beforeend',
+      `<div class="sw"><input type="radio" name="${g}" id="${id}" value="${nome}">` +
+      `<label for="${id}"><span class="dot" style="background:${col}"></span>${nome}</label></div>`);
+  });
+  box.addEventListener('change', e => {
+    document.getElementById(g + '-altro').classList.toggle('on', e.target.value === 'altro…');
+  });
+});
+
+const val = n => (document.querySelector(`input[name="${n}"]:checked`) || {}).value || '';
+const colore = g => {
+  const v = val(g);
+  return v === 'altro…' ? document.getElementById(g + '-altro').value.trim() : v;
+};
+
+document.querySelectorAll('input[name="cravattaTipo"]').forEach(r =>
+  r.addEventListener('change', () => { document.getElementById('cravattaColoreBox').hidden = !val('cravattaTipo'); }));
+
+// anteprima basetta
+function aggiornaBase() {
+  document.getElementById('pv-titolo').textContent = val('titolo') || 'Dott.';
+  const mag = val('tipo') === 'Magistrale';
+  const tipo = document.getElementById('pv-tipo');
+  tipo.textContent = mag ? 'MAGISTRALE' : 'LAUREA';
+  tipo.setAttribute('font-size', mag ? 6.5 : 9);
+  document.getElementById('pv-nome').textContent = document.getElementById('nome').value.trim() || 'Nome Cognome';
+  // stesso a capo del generatore STL: righe da max ~14 caratteri
+  const parole = (document.getElementById('corso').value.trim().toUpperCase() || 'CORSO').split(/\s+/);
+  const righe = [];
+  parole.forEach(p => {
+    const u = righe.length - 1;
+    if (u >= 0 && (righe[u] + ' ' + p).length <= 14) righe[u] += ' ' + p; else righe.push(p);
+  });
+  const t = document.getElementById('pv-corso');
+  const lungh = Math.max(...righe.map(r => r.length));
+  const fs = Math.min(8, 44 / (lungh * 0.78), 24 / righe.length);
+  t.setAttribute('font-size', fs.toFixed(2));
+  t.innerHTML = righe.map((r, i) => `<tspan x="80" dy="${i ? fs * 1.15 : 0}">${r.replace(/[&<>]/g, '')}</tspan>`).join('');
+  t.setAttribute('y', (44 - (righe.length - 1) * fs * 0.6).toFixed(2));
+  const n = document.getElementById('pv-nome');
+  n.setAttribute('font-size', Math.min(6, 51 / (n.textContent.length * 0.55)).toFixed(2));
+}
+['nome', 'corso'].forEach(id => document.getElementById(id).addEventListener('input', aggiornaBase));
+document.querySelectorAll('input[name="titolo"], input[name="tipo"]').forEach(r => r.addEventListener('change', aggiornaBase));
+
+// foto: fino a 5, ridimensionate a max 1280px prima dell'invio
+const MAX_FOTO = 5;
+const foto = []; // data URL jpeg
+function riduci(file) {
+  return new Promise((ok, ko) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(img.src);
+      ok(cv.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = ko;
+    img.src = URL.createObjectURL(file);
+  });
+}
+function mostraFoto() {
+  document.getElementById('thumbs').innerHTML = foto.map((u, i) =>
+    `<div class="th"><img src="${u}" alt="Foto ${i + 1}"><button type="button" data-i="${i}" aria-label="Rimuovi foto ${i + 1}">×</button></div>`).join('');
+  const resto = MAX_FOTO - foto.length;
+  document.getElementById('dropLabel').hidden = resto <= 0;
+  document.getElementById('dropTxt').innerHTML = foto.length
+    ? `<strong>Aggiungi altre foto</strong><br>ancora ${resto} su ${MAX_FOTO}`
+    : '<strong>Tocca per aggiungere foto</strong><br>puoi sceglierne più di una';
+}
+document.getElementById('thumbs').addEventListener('click', e => {
+  if (e.target.dataset.i !== undefined) { foto.splice(+e.target.dataset.i, 1); mostraFoto(); }
+});
+document.getElementById('foto').addEventListener('change', async e => {
+  const files = [...e.target.files].slice(0, MAX_FOTO - foto.length);
+  for (const f of files) {
+    try { foto.push(await riduci(f)); } catch (err) { /* file non immagine: lo saltiamo */ }
+  }
+  e.target.value = '';
+  mostraFoto();
+});
+
+document.getElementById('invia').addEventListener('click', () => {
+  const err = document.getElementById('err');
+  const abitoCol = colore('abitoColore');
+  const cravTipo = val('cravattaTipo');
+  const cravCol = colore('cravattaColore');
+  const cam = colore('camicia');
+  const o = {
+    titolo: val('titolo'),
+    nome: document.getElementById('nome').value.trim(),
+    corso: document.getElementById('corso').value.trim(),
+    tipo: val('tipo') || 'Laurea',
+    dataLaurea: document.getElementById('dataLaurea').value,
+    abito: abitoCol ? document.getElementById('abitoTipo').value + ' ' + abitoCol : '',
+    camicia: cam && cam !== 'Nessuna camicia' ? cam : '',
+    cravatta: cravTipo ? (cravTipo + (cravCol ? ' ' + cravCol : '')) : '',
+    tesi: colore('tesi'),
+    dettagli: document.getElementById('dettagli').value.trim(),
+    instagram: document.getElementById('instagram').value.trim(),
+    telefono: document.getElementById('telefono').value.trim(),
+    foto: foto.map(u => u.split(',')[1]),
+    privacy: document.getElementById('privacy').checked
+  };
+  const manca = [];
+  if (!o.titolo) manca.push('Dott. o Dott.ssa');
+  if (!o.nome) manca.push('nome e cognome');
+  if (!o.corso) manca.push('corso di laurea');
+  if (!o.abito) manca.push('colore abito');
+  if (!o.tesi) manca.push('colore tesi');
+  if (!o.foto.length) manca.push('almeno una foto del viso');
+  if (!o.instagram) manca.push('profilo Instagram');
+  if (!o.privacy) manca.push('consenso privacy');
+  if (manca.length) { err.textContent = 'Manca: ' + manca.join(', ') + '.'; return; }
+  err.textContent = '';
+
+  const btn = document.getElementById('invia');
+  btn.disabled = true; btn.textContent = 'Invio in corso…';
+  const fatto = () => {
+    document.getElementById('f').hidden = true;
+    document.getElementById('bar').hidden = true;
+    document.getElementById('done').hidden = false;
+    window.scrollTo(0, 0);
+  };
+  const errore = e => {
+    btn.disabled = false; btn.textContent = 'Invia richiesta';
+    err.textContent = 'Invio non riuscito, riprova tra poco. (' + (e && e.message || e) + ')';
+  };
+  if (window.google && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(fatto).withFailureHandler(errore).inviaRichiesta(o);
+  } else {
+    // pagina pubblicata fuori da Google: invio diretto all'app (senza cookie, così
+    // funziona anche nel browser di Instagram e con più account Google)
+    fetch(ENDPOINT, {
+      method: 'POST', credentials: 'omit', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(o)
+    }).then(r => r.json())
+      .then(r => r.ok ? fatto() : errore(r.errore))
+      .catch(errore);
+  }
+});
+aggiornaBase();
+</script>
+</body>
+</html>

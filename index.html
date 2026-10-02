@@ -152,6 +152,8 @@
           </g>
           <text id="pv-titolo" x="2" y="47" font-family="Georgia, serif" font-weight="700" font-size="6" fill="#1f2a44">Dott.</text>
           <text id="pv-nome" x="2" y="55" font-family="Georgia, serif" font-weight="700" font-size="6" fill="#1f2a44">Nome Cognome</text>
+          <!-- tesi a libro: dorso a sinistra -->
+          <rect x="55" y="4" width="2.2" height="53" fill="#b3a68f"/>
           <g font-family="Georgia, serif" font-weight="700" fill="#1f2a44" text-anchor="middle">
             <text id="pv-tipo" x="80" y="20" font-size="9">LAUREA</text>
             <text x="80" y="31" font-size="8">IN</text>
@@ -234,7 +236,7 @@
       <input type="text" id="noteSped" maxlength="100">
 
       <div class="info" style="margin-top:16px">
-        <div>🎨 <span>Ti mandiamo un'<b>anteprima</b> su Instagram entro 24-48 ore: <b>non paghi nulla adesso</b>.</span></div>
+        <div>🎨 <span>Qui sotto puoi vedere subito un'<b>anteprima</b> della tua miniatura: <b>non paghi nulla adesso</b>.</span></div>
         <div>💳 <span>Se ti piace, paghi con bonifico anticipato e partiamo con la stampa.</span></div>
         <div>⏱️ <span>Lavorazione 7-10 giorni lavorativi + spedizione 3-5 giorni.</span></div>
         <div>📦 <span>Scatola standard in plexiglass inclusa, quella personalizzata no.</span></div>
@@ -242,16 +244,27 @@
 
       <label class="check" style="margin-top:16px">
         <input type="checkbox" id="privacy">
-        <span>Acconsento all'uso delle foto e dei dati solo per realizzare la miniatura. Le foto vengono cancellate dopo la consegna.</span>
+        <span>Acconsento all'uso delle foto e dei dati solo per realizzare la miniatura, anche tramite un servizio di intelligenza artificiale (Google Gemini) per generare l'anteprima. Le foto vengono cancellate dopo la consegna.</span>
       </label>
       <div class="err" id="err" role="alert"></div>
+    </section>
+
+    <section>
+      <h2><span class="n">6</span> Guarda la tua miniatura</h2>
+      <p class="hint">Compila tutto qui sopra e genera un'anteprima della tua miniatura. Hai <b>1 tentativo</b>: se vuoi modifiche, invia comunque la richiesta e le sistemiamo insieme su Instagram 💬</p>
+      <button class="cta" id="genera" type="button" style="width:100%;background:var(--ink)">Genera il mio pop ✨</button>
+      <div id="anteprimaBox" hidden style="margin-top:14px;text-align:center">
+        <img id="anteprimaImg" alt="Anteprima della tua miniatura" style="width:100%;max-width:420px;border-radius:14px;border:1px solid var(--line)">
+        <p class="hint" style="margin-top:10px">È un'anteprima generata al computer: la miniatura vera la modelliamo e dipingiamo a mano partendo da qui. Vuoi cambiare qualcosa? <b>Invia la richiesta e scrivici su Instagram</b>, la sistemiamo insieme 💬</p>
+      </div>
+      <div class="err" id="err2" role="alert"></div>
     </section>
   </form>
 
   <div class="done" id="done" hidden>
     <div class="big">🎓</div>
     <h2>Richiesta inviata!</h2>
-    <p class="sub">Grazie! Ti scriviamo su Instagram con l'anteprima della tua miniatura entro 24-48 ore.</p>
+    <p class="sub">Grazie! Ti scriviamo su Instagram entro 24-48 ore per confermare la tua miniatura e sistemare eventuali modifiche.</p>
   </div>
 </div>
 
@@ -264,6 +277,15 @@
 
 <script>
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbxM-UuiAhNS3cSSan65OcB-JidujbIa21msMNy-zhBxjLzVxLIimnrPVhsyDf4DVrd-5g/exec';
+// anteprima AI (Gemini a pagamento): spenta finché non c'è la chiave GEMINI_KEY con fatturazione attiva
+const ANTEPRIMA_AI = false;
+if (!ANTEPRIMA_AI) {
+  document.getElementById('genera').closest('section').hidden = true;
+  document.querySelector('.info div').innerHTML =
+    '🎨 <span>Ti mandiamo un’<b>anteprima</b> su Instagram entro 24-48 ore: <b>non paghi nulla adesso</b>.</span>';
+  document.querySelector('#privacy + span').textContent =
+    'Acconsento all’uso delle foto e dei dati solo per realizzare la miniatura. Le foto vengono cancellate dopo la consegna.';
+}
 const COLORI = [
   ['nero', '#111'], ['blu notte', '#1b2546'], ['blu', '#1f4fa8'], ['azzurro', '#7fb5e6'],
   ['grigio scuro', '#4a4a4a'], ['grigio chiaro', '#bdbdbd'], ['bianco', '#fff'], ['beige', '#d8c3a0'],
@@ -303,7 +325,20 @@ function aggiornaBase() {
   const tipo = document.getElementById('pv-tipo');
   tipo.textContent = mag ? 'MAGISTRALE' : 'LAUREA';
   tipo.setAttribute('font-size', mag ? 6.5 : 9);
-  document.getElementById('pv-nome').textContent = document.getElementById('nome').value.trim() || 'Nome Cognome';
+  // nome: come nel generatore STL, oltre 22 caratteri va su due righe
+  const nomeTxt = document.getElementById('nome').value.trim().replace(/\s+/g, ' ') || 'Nome Cognome';
+  let righeNome = [nomeTxt];
+  if (nomeTxt.length > 22 && nomeTxt.includes(' ')) {
+    const spazi = [...nomeTxt].map((c, i) => c === ' ' ? i : -1).filter(i => i >= 0);
+    const t = spazi.reduce((a, b) => Math.abs(b - nomeTxt.length / 2) < Math.abs(a - nomeTxt.length / 2) ? b : a);
+    righeNome = [nomeTxt.slice(0, t), nomeTxt.slice(t + 1)];
+  }
+  const pvNome = document.getElementById('pv-nome');
+  const pvTit = document.getElementById('pv-titolo');
+  const esc = s => s.replace(/[&<>]/g, '');
+  pvNome.innerHTML = righeNome.map((r, i) => `<tspan x="2" dy="${i ? 6.6 : 0}">${esc(r)}</tspan>`).join('');
+  pvNome.setAttribute('y', righeNome.length > 1 ? 48.5 : 55);
+  pvTit.setAttribute('y', righeNome.length > 1 ? 41.5 : 47);
   // stesso a capo del generatore STL: righe da max ~14 caratteri
   const parole = (document.getElementById('corso').value.trim().toUpperCase() || 'CORSO').split(/\s+/);
   const righe = [];
@@ -317,8 +352,19 @@ function aggiornaBase() {
   t.setAttribute('font-size', fs.toFixed(2));
   t.innerHTML = righe.map((r, i) => `<tspan x="80" dy="${i ? fs * 1.15 : 0}">${r.replace(/[&<>]/g, '')}</tspan>`).join('');
   t.setAttribute('y', (44 - (righe.length - 1) * fs * 0.6).toFixed(2));
-  const n = document.getElementById('pv-nome');
-  n.setAttribute('font-size', Math.min(6, 51 / (n.textContent.length * 0.55)).toFixed(2));
+  // ogni testo si rimpicciolisce da solo finché non entra nel suo spazio
+  // (nome e titolo: da x=2 a x=52, prima della tesi; corso: 46 di larghezza sulla tesi)
+  adatta(tipo, mag ? 6.5 : 9, 44);
+  adatta(pvNome, 6, 50);
+  adatta(pvTit, 6, 50);
+  adatta(t, fs, 44);
+}
+function adatta(el, max, larghezza) {
+  el.setAttribute('font-size', max);
+  try {
+    const w = el.getBBox().width;
+    if (w > larghezza) el.setAttribute('font-size', (max * larghezza / w).toFixed(2));
+  } catch (e) { /* SVG non ancora visibile: resta la dimensione massima */ }
 }
 ['nome', 'corso'].forEach(id => document.getElementById(id).addEventListener('input', aggiornaBase));
 document.querySelectorAll('input[name="titolo"], input[name="tipo"]').forEach(r => r.addEventListener('change', aggiornaBase));
@@ -362,8 +408,8 @@ document.getElementById('foto').addEventListener('change', async e => {
   mostraFoto();
 });
 
-document.getElementById('invia').addEventListener('click', () => {
-  const err = document.getElementById('err');
+// raccoglie i dati del modulo e cosa manca per inviarlo
+function raccogli() {
   const abitoCol = colore('abitoColore');
   const cravTipo = val('cravattaTipo');
   const cravCol = colore('cravattaColore');
@@ -404,6 +450,52 @@ document.getElementById('invia').addEventListener('click', () => {
     if (!sped.citta) manca.push('città');
   }
   if (!o.privacy) manca.push('consenso privacy');
+  return { o, manca };
+}
+
+function chiamaApp(dati) {
+  return fetch(ENDPOINT, {
+    method: 'POST', credentials: 'omit', redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(dati)
+  }).then(r => r.json());
+}
+
+// anteprima con l'AI: 1 solo tentativo per persona (il limite vero è sul server)
+document.getElementById('genera').addEventListener('click', () => {
+  const err2 = document.getElementById('err2');
+  const { o, manca } = raccogli();
+  if (manca.length) { err2.textContent = 'Prima completa: ' + manca.join(', ') + '.'; return; }
+  err2.textContent = '';
+  const btn = document.getElementById('genera');
+  btn.disabled = true; btn.textContent = 'Sto creando la tua miniatura… (circa 20 secondi)';
+  chiamaApp(Object.assign({ azione: 'anteprima' }, o))
+    .then(r => {
+      if (r.ok) {
+        document.getElementById('anteprimaImg').src = 'data:image/jpeg;base64,' + r.immagine;
+        document.getElementById('anteprimaBox').hidden = false;
+        btn.hidden = true;
+        document.getElementById('anteprimaBox').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (r.errore === 'gia_generata') {
+        btn.hidden = true;
+        err2.textContent = 'Hai già usato il tuo tentativo. Invia la richiesta e scrivici su Instagram per le modifiche 💬';
+      } else if (r.errore === 'limite_giornaliero' || r.errore === 'non_attivo') {
+        btn.hidden = true;
+        err2.textContent = 'Anteprime non disponibili in questo momento: invia la richiesta e te la mandiamo noi su Instagram!';
+      } else {
+        btn.disabled = false; btn.textContent = 'Genera il mio pop ✨';
+        err2.textContent = 'Non sono riuscito a creare l’anteprima, riprova tra poco.';
+      }
+    })
+    .catch(() => {
+      btn.disabled = false; btn.textContent = 'Genera il mio pop ✨';
+      err2.textContent = 'Connessione non riuscita, riprova tra poco.';
+    });
+});
+
+document.getElementById('invia').addEventListener('click', () => {
+  const err = document.getElementById('err');
+  const { o, manca } = raccogli();
   if (manca.length) { err.textContent = 'Manca: ' + manca.join(', ') + '.'; return; }
   err.textContent = '';
 
@@ -424,11 +516,7 @@ document.getElementById('invia').addEventListener('click', () => {
   } else {
     // pagina pubblicata fuori da Google: invio diretto all'app (senza cookie, così
     // funziona anche nel browser di Instagram e con più account Google)
-    fetch(ENDPOINT, {
-      method: 'POST', credentials: 'omit', redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(o)
-    }).then(r => r.json())
+    chiamaApp(o)
       .then(r => r.ok ? fatto() : errore(r.errore))
       .catch(errore);
   }

@@ -218,6 +218,21 @@
       <label for="telefono">Telefono <span class="opt">(facoltativo)</span></label>
       <input type="tel" id="telefono" placeholder="es. 333 1234567" maxlength="20">
 
+      <h2 style="margin-top:22px"><span class="n">5</span> Spedizione <span class="opt" style="font:400 14px Inter,sans-serif;color:var(--muted)">(facoltativo)</span></h2>
+      <p class="hint">Se lo inserisci ora, spediamo prima! Puoi anche darcelo dopo su Instagram.</p>
+      <label for="destinatario">Nome e cognome di chi riceve</label>
+      <input type="text" id="destinatario" autocomplete="name" maxlength="60">
+      <label for="via">Via e numero civico</label>
+      <input type="text" id="via" autocomplete="street-address" maxlength="100" placeholder="es. Via Roma 12">
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">
+        <div><label for="cap">CAP</label><input type="text" id="cap" inputmode="numeric" autocomplete="postal-code" maxlength="5" placeholder="80100"></div>
+        <div><label for="citta">Città</label><input type="text" id="citta" autocomplete="address-level2" maxlength="60"></div>
+      </div>
+      <label for="provincia">Provincia</label>
+      <input type="text" id="provincia" maxlength="20" placeholder="es. NA">
+      <label for="noteSped">Scala, interno, citofono <span class="opt">(se servono)</span></label>
+      <input type="text" id="noteSped" maxlength="100">
+
       <div class="info" style="margin-top:16px">
         <div>🎨 <span>Ti mandiamo un'<b>anteprima</b> su Instagram entro 24-48 ore: <b>non paghi nulla adesso</b>.</span></div>
         <div>💳 <span>Se ti piace, paghi con bonifico anticipato e partiamo con la stampa.</span></div>
@@ -369,6 +384,12 @@ document.getElementById('invia').addEventListener('click', () => {
     foto: foto.map(u => u.split(',')[1]),
     privacy: document.getElementById('privacy').checked
   };
+  const sp = id => document.getElementById(id).value.trim();
+  const sped = { destinatario: sp('destinatario'), via: sp('via'), cap: sp('cap'), citta: sp('citta'), provincia: sp('provincia').toUpperCase(), note: sp('noteSped') };
+  const spedIniziata = Object.values(sped).some(Boolean);
+  o.indirizzo = spedIniziata
+    ? [sped.destinatario, sped.via, [sped.cap, sped.citta, sped.provincia && '(' + sped.provincia + ')'].filter(Boolean).join(' '), sped.note].filter(Boolean).join(', ')
+    : '';
   const manca = [];
   if (!o.titolo) manca.push('Dott. o Dott.ssa');
   if (!o.nome) manca.push('nome e cognome');
@@ -377,6 +398,11 @@ document.getElementById('invia').addEventListener('click', () => {
   if (!o.tesi) manca.push('colore tesi');
   if (!o.foto.length) manca.push('almeno una foto del viso');
   if (!o.instagram) manca.push('profilo Instagram');
+  if (spedIniziata) {  // indirizzo facoltativo, ma se lo iniziano deve essere completo
+    if (!sped.via) manca.push('via e numero civico');
+    if (!/^\d{5}$/.test(sped.cap)) manca.push('CAP (5 cifre)');
+    if (!sped.citta) manca.push('città');
+  }
   if (!o.privacy) manca.push('consenso privacy');
   if (manca.length) { err.textContent = 'Manca: ' + manca.join(', ') + '.'; return; }
   err.textContent = '';

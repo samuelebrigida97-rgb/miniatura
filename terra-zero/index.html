@@ -90,7 +90,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .daybar b{position:absolute;top:0;bottom:0;width:3px;background:var(--ink);border-radius:2px}
 
 .side{grid-area:side;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;max-height:calc(min(74vh,780px) + 60px);overflow:hidden}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line)}
 .tabs button{border:0;background:none;padding:12px 4px;cursor:pointer;font-weight:700;color:var(--muted);border-bottom:2px solid transparent}
 .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ochre)}
 .pane{overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}
@@ -191,7 +191,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   <header class="top">
     <div class="brand">
       <h1>Terra <span>Zero</span></h1>
-      <p>Due persone, nessuno strumento, un mondo intero da scoprire. Tu guardi, consigli e decidi giorno dopo giorno.</p>
+      <p>Due persone, nessuno strumento, un mondo intero. Mettiti comodo e guarda come se la cavano, giorno dopo giorno.</p>
     </div>
     <div class="stats">
       <div class="stat"><small>Abitanti</small><b id="sPop">2</b></div>
@@ -220,9 +220,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       <div class="seg" id="speeds" role="group" aria-label="Velocità">
         <button data-sp="1" aria-pressed="true">1×</button><button data-sp="3" aria-pressed="false">3×</button><button data-sp="10" aria-pressed="false">10×</button><button data-sp="30" aria-pressed="false">30×</button>
       </div>
-      <button class="btn" id="nextDay">Avanza di un giorno</button>
-      <label class="tog"><input type="checkbox" id="pauseDawn" checked> Fermati a ogni alba</label>
+      <label class="tog"><input type="checkbox" id="director" checked> Regia automatica</label>
       <div class="daybar" title="Ora del giorno"><i></i><b id="dayMark"></b></div>
+      <button class="btn" id="newWorld">Nuovo mondo</button>
     </div>
   </main>
 
@@ -231,12 +231,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       <button role="tab" data-tab="people" aria-selected="true">Abitanti</button>
       <button role="tab" data-tab="diary" aria-selected="false">Diario</button>
       <button role="tab" data-tab="disc" aria-selected="false">Scoperte</button>
-      <button role="tab" data-tab="powers" aria-selected="false">Poteri</button>
     </div>
     <div class="pane" id="tab-people"><div id="detail"></div><h3>Tutti gli abitanti</h3><div class="plist" id="plist"></div></div>
     <div class="pane" id="tab-diary" hidden></div>
     <div class="pane" id="tab-disc" hidden></div>
-    <div class="pane" id="tab-powers" hidden></div>
   </aside>
 </div>
 
@@ -370,7 +368,7 @@ function fbm(x,y,s){ let t=0,amp=1,f=1,n=0; for(let o=0;o<4;o++){ t+=vnoise(x*f,
 let S = null;           // stato del mondo (salvabile)
 let WD = null;          // distanza dall'acqua (statica)
 let paused = false, speed = 1, runToDawn = false;
-let selected = null, pendingGo = null;
+let selected = null, pendingGo = null, director = true, lastFocus = 0, holdUntil = 0;
 const cam = { x: W/2, y: H/2, z: 22, follow: null };
 
 const day = () => Math.floor(S.tick/DAY)+1;
@@ -520,7 +518,7 @@ function newPerson(name, sex, x, y, o={}){
   S.people.push(p); return p;
 }
 function newGame(n1, n2, seed){
-  const opts = S ? S.opts : { pauseDawn:true, reveal:false };
+  const opts = { pauseDawn:false, reveal:false };
   seed = seed ?? Math.floor(Math.random()*1e9);
   const g = genWorld(seed);
   S = { v:1, seed:g.seed, tick:0, tiles:g.tiles, animals:[], people:[], nextId:1, colorIdx:0, disc:{}, words:[], diary:[], today:[],
@@ -624,7 +622,19 @@ function tempNow(){
 }
 
 // ================= diario =================
-function log(text, kind){ S.today.push({ h:timeStr(), x:text, k:kind||"" }); if (kind) toast(text, kind); dirty.diary=true; }
+function log(text, kind){
+  S.today.push({ h:timeStr(), x:text, k:kind||"" }); if (kind) toast(text, kind); dirty.diary=true;
+  if (kind && director && performance.now()>holdUntil){ const p=alive().find(q=>text.startsWith(q.name)) || alive().find(q=>text.includes(q.name)); if (p) focusOn(p.id); }
+}
+function focusOn(id){ if (selected!==id){ selected=id; dirty.detail=true; dirty.people=true; } cam.follow=id; lastFocus=performance.now(); }
+const BORING=["dormire","vaga","riposa","ascolta","segui","bere"];
+function directorTick(now){
+  if (!director || now<holdUntil || now-lastFocus<22000) return;
+  const ppl=alive(); if (ppl.length<2){ if (ppl[0]) focusOn(ppl[0].id); return; }
+  const others=ppl.filter(p=>p.id!==selected);
+  const busy=others.filter(p=>p.task && !BORING.includes(p.task.k));
+  focusOn(pick(busy.length?busy:others).id);
+}
 function say(a, k, pname){ const arr=THOUGHTS[k]; if (arr) a.thought = pick(arr).replace("{p}", pname||"qualcuno"); }
 
 // ================= scoperte =================
@@ -1174,6 +1184,8 @@ function newDay(){
     }
     p.sleptNear=false;
   }
+  const single=alive().filter(p=>!isChild(p) && !p.partner).length;
+  if (single>0 && d-(S.lastWander||0)>60 && alive().length<MAX_POP-2 && Math.random()<.03){ if (wanderers()) S.lastWander=d; }
   saveGame();
   if (S.opts.pauseDawn || runToDawn){ paused=true; runToDawn=false; showBanner(`Alba del giorno ${d}. Leggi il diario, dai gli ordini e poi premi “Avanza di un giorno”.`); }
   dirty.all();
@@ -1206,7 +1218,7 @@ function tick(){
 const SAVE_KEY="terra-zero-v1";
 function saveGame(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
 function loadGame(str){
-  try{ const o=JSON.parse(str); if (!o || o.v!==1 || !o.tiles || o.tiles.length!==W*H) return false; S=o; WD=computeWD(S.tiles); colorCache={}; return true; }catch(e){ return false; }
+  try{ const o=JSON.parse(str); if (!o || o.v!==1 || !o.tiles || o.tiles.length!==W*H) return false; S=o; S.opts.pauseDawn=false; S.inspire=null; WD=computeWD(S.tiles); colorCache={}; return true; }catch(e){ return false; }
 }
 
 // ================= disegno =================
@@ -1331,13 +1343,22 @@ function draw(time){
     const ic=p.task?ICON[p.task.k]:""; const sl=p.task&&p.task.k==="dormire"&&p.task.phase==="work";
     if (z>=13 && (ic||sl)){ ctx.font=`${fs+1}px system-ui,sans-serif`; ctx.fillText(sl?"💤":ic,px+w/2+fs*.6,py-r-2); }
   }
-  if (pendingGo){ ctx.fillStyle="rgba(227,161,76,.12)"; ctx.fillRect(0,0,vw,vh); }
+  const sp=personById(selected);
+  if (sp && sp.alive && z>=12 && sp.thought){
+    const px=ox+(sp.x+.5)*z, py=oy+(sp.y+.5)*z-z*.32-fs-12;
+    ctx.font=`italic 400 ${fs+1}px "Atkinson Hyperlegible",system-ui,sans-serif`;
+    const txt=sp.thought.length>60?sp.thought.slice(0,58)+"…":sp.thought; const w=Math.min(vw-20,ctx.measureText(txt).width+18), hh=fs+12;
+    const bx=clamp(px-w/2,10,vw-w-10), by=Math.max(10,py-hh);
+    ctx.fillStyle="rgba(250,246,236,.94)"; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx,by,w,hh,8) : ctx.rect(bx,by,w,hh); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(clamp(px,bx+10,bx+w-10)-5,by+hh); ctx.lineTo(clamp(px,bx+10,bx+w-10)+5,by+hh); ctx.lineTo(clamp(px,bx+10,bx+w-10),by+hh+6); ctx.fill();
+    ctx.fillStyle="#1b2a23"; ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillText(txt,bx+9,by+hh/2+1); ctx.textAlign="center"; ctx.textBaseline="bottom";
+  }
 }
 
 // ================= input mappa =================
 let drag=null;
 cv.addEventListener("pointerdown",e=>{ cv.setPointerCapture(e.pointerId); drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false}; });
-cv.addEventListener("pointermove",e=>{ if (!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; if (Math.abs(dx)+Math.abs(dy)>6) drag.moved=true; if (drag.moved){ cam.follow=null; cam.x=drag.cx-dx/cam.z; cam.y=drag.cy-dy/cam.z; cv.style.cursor="grabbing"; } });
+cv.addEventListener("pointermove",e=>{ if (!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; if (Math.abs(dx)+Math.abs(dy)>6) drag.moved=true; if (drag.moved){ cam.follow=null; holdUntil=performance.now()+30000; cam.x=drag.cx-dx/cam.z; cam.y=drag.cy-dy/cam.z; cv.style.cursor="grabbing"; } });
 cv.addEventListener("pointerup",e=>{ if (!drag) return; const moved=drag.moved; drag=null; cv.style.cursor=""; if (!moved) tapAt(e); });
 cv.addEventListener("pointercancel",()=>{ drag=null; });
 cv.addEventListener("wheel",e=>{ e.preventDefault(); zoomBy(e.deltaY<0?1.15:1/1.15); },{passive:false});
@@ -1353,7 +1374,7 @@ function tapAt(e){
     return;
   }
   let best=null, bd=.9; for (const p of alive()){ const d=Math.hypot(p.x-wx,p.y-wy); if (d<bd){ bd=d; best=p; } }
-  if (best){ select(best.id); return; }
+  if (best){ select(best.id); holdUntil=performance.now()+30000; return; }
   showTileInfo(gx,gy);
 }
 function showTileInfo(x,y){
@@ -1384,6 +1405,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const dirty={ people:true, detail:true, diary:true, disc:true, powers:true, all(){ this.people=this.detail=this.diary=this.disc=this.powers=true; } };
 let tab="people";
 try{ tab=localStorage.getItem("terra-zero-tab")||"people"; }catch(e){}
+if (!["people","diary","disc"].includes(tab)) tab="people";
 
 function toast(text,kind){ const box=$("toasts"); if ([...box.children].some(c=>c.textContent===text)) return; const el=document.createElement("div"); el.className="toast "+(kind||""); el.textContent=text; box.appendChild(el); while (box.children.length>3) box.firstChild.remove(); setTimeout(()=>el.remove(),6000); }
 function showBanner(html){ const b=$("banner"); b.innerHTML=html; b.hidden=false; }
@@ -1391,7 +1413,7 @@ function hideBanner(){ $("banner").hidden=true; }
 function showOver(){ const o=$("over"); o.innerHTML=`<h2>La storia di Terra Zero si è fermata</h2><p>Nessuno è sopravvissuto. Il mondo è durato ${day()} giorni e ha visto ${Object.keys(S.disc).length} scoperte.</p><button class="btn primary" id="overNew">Ricomincia con un nuovo mondo</button>`; o.hidden=false; $("overNew").onclick=()=>{ o.hidden=true; newGame("Adamo","Eva"); }; }
 
 function select(id){ selected=id; cam.follow=id; dirty.detail=true; dirty.people=true; if (tab!=="people") setTab("people"); }
-function setTab(t){ tab=t; try{ localStorage.setItem("terra-zero-tab",t); }catch(e){} for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected",b.dataset.tab===t); for (const k of ["people","diary","disc","powers"]) $("tab-"+k).hidden=k!==t; dirty.all(); }
+function setTab(t){ tab=t; try{ localStorage.setItem("terra-zero-tab",t); }catch(e){} for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected",b.dataset.tab===t); for (const k of ["people","diary","disc"]) $("tab-"+k).hidden=k!==t; dirty.all(); }
 document.querySelector(".tabs").onclick=e=>{ const b=e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab); };
 
 function actText(p){
@@ -1422,7 +1444,7 @@ function updatePeople(){
 }
 function renderDetail(){
   const p=personById(selected); const el=$("detail");
-  if (!p || !p.alive){ el.innerHTML=`<p class="hint">Tocca una persona sulla mappa o nell'elenco per vedere cosa pensa e darle un ordine.</p>`; return; }
+  if (!p || !p.alive){ el.innerHTML=`<p class="hint">Tocca una persona sulla mappa o nell'elenco per vedere cosa pensa.</p>`; return; }
   const mate=personById(p.partner); const par=[personById(p.mother),personById(p.father)].filter(Boolean);
   const meta=[p.sex==="M"?"♂ uomo":"♀ donna", ageText(p)]; if (mate && mate.alive) meta.push(`compagn${sexW(p,"o","a")} di ${mate.name}`); if (par.length) meta.push(`${sexW(p,"figlio","figlia")} di ${par.map(x=>x.name).join(" e ")}`);
   el.innerHTML=`<div class="detail">
@@ -1430,8 +1452,6 @@ function renderDetail(){
     <p class="thought" data-f="thought"></p>
     <div class="doing"><span>Ora:</span> <b data-f="act"></b></div>
     <div class="bars">${NEEDS.map(([k,l])=>`<span>${l}</span><span class="bar"><i data-b="${k}"></i></span><span class="num" data-n="${k}"></span>`).join("")}<span>Salute</span><span class="bar"><i data-b="salute"></i></span><span class="num" data-n="salute"></span></div>
-    <div><h3>Dai un ordine per oggi</h3><div class="ogrid" style="margin-top:6px">${ORDERS.map(o=>`<button data-order="${o.k}" aria-pressed="false">${o.n}</button>`).join("")}<button data-order="" aria-pressed="false">Lascia decidere</button></div>
-    <p class="hint" style="margin-top:6px">Un ordine vale fino all'alba. Se ha troppa fame, sete o freddo, prima pensa a sopravvivere.</p></div>
     <div><h3>Porta con sé</h3><div class="chips" data-f="inv" style="margin-top:6px"></div></div>
     <div><h3>Sa fare</h3><div class="chips" data-f="known" style="margin-top:6px"></div></div>
     <div><h3>Carattere</h3><div class="traits" style="margin-top:6px">${[["cur","Curiosità"],["cor","Coraggio"],["soc","Socievolezza"],["lab","Laboriosità"]].map(([k,l])=>`<span>${l}</span><span class="bar"><i style="width:${Math.round(p.traits[k]*100)}%"></i></span>`).join("")}</div></div>
@@ -1479,16 +1499,16 @@ function renderDisc(){
     if (d.special) return `<div class="disc ${S.words.length?"open":"lock"}"><b>${d.n}</b><span class="st">${S.words.length}/12 parole</span><p>${d.d} Nasce stando insieme: ogni chiacchierata può inventare una parola.</p></div>`;
     if (!ready){ const miss=d.req.filter(r=>!S.disc[r]).map(r=>DISCBY[r].n); return `<div class="disc lock"><b>${d.n}</b><span class="st">Bloccata</span><p>${miss.length?"Serve prima: "+miss.join(", ")+".":"Qualcuno deve prima imparare ciò che serve."}</p></div>`; }
     const insp=inspired(d.id);
-    return `<div class="disc open"><b>${d.n}</b><span class="st">Possibile</span><p>${hintFor(d)}</p><div class="act"><button data-insp="${d.id}" ${S.inspire&&day()<=S.inspire.until?"disabled":""}>${insp?"Idea sussurrata":"Sussurra l'idea"}</button>${insp?`<span class="hint">ci penseranno fino al giorno ${S.inspire.until}</span>`:""}</div></div>`;
+    return `<div class="disc open"><b>${d.n}</b><span class="st">Possibile</span><p>${hintFor(d)}</p></div>`;
   }).join("");
   const words=S.words.length?`<div class="words">${S.words.map(w=>`<span class="chip"><b>${esc(w.w)}</b> = ${esc(w.c)}</span>`).join("")}</div>`:`<p class="hint">Nessuna parola ancora: per ora si capiscono a gesti.</p>`;
-  $("tab-disc").innerHTML=`<p class="hint">Le scoperte nascono dall'esperienza: più toccano pietre, rami e animali, più è probabile un'intuizione. Puoi sussurrare un'idea a tutti, una alla volta.</p><div class="dl">${items}</div><h3>Il loro vocabolario</h3>${words}`;
+  $("tab-disc").innerHTML=`<p class="hint">Le scoperte nascono dall'esperienza: più toccano pietre, rami e animali, più è probabile un'intuizione. Qui vedi cosa hanno già capito e cosa potrebbero capire presto.</p><div class="dl">${items}</div><h3>Il loro vocabolario</h3>${words}`;
 }
 function hintFor(d){
   const h={selce:"Nasce raccogliendo e battendo pietre.",bastone:"Nasce maneggiando rami.",fibre:"Nasce raccogliendo erba, bacche e canne.",fuoco:"Nasce battendo la selce, o guardando un incendio da vicino.",lancia:"Combinando selce e bastone, sperimentando.",cesto:"Intrecciando fibre mentre raccolgono.",capanna:"Sperimentando con rami e fibre.",cottura:"Mangiando vicino a un fuoco acceso.",pesca:"Provando a pescare con la lancia.",vestiti:"Sperimentando con una pelle di animale.",vasi:"Dopo aver giocato con l'argilla vicino all'acqua.",agricoltura:"Raccogliendo e mangiando tanti frutti e semi.",arco:"Cacciando spesso con la lancia.",medicina:"Raccogliendo a lungo erbe e funghi.",addomesticamento:"Cacciando e vivendo vicino agli animali.",musica:"Stando insieme attorno al fuoco.",pittura:"Stando insieme e sperimentando col carbone.",casa:"Sperimentando con capanna e argilla cotta.",pane:"Mangiando farro vicino al fuoco."}[d.id];
   return h||d.d;
 }
-$("tab-disc").addEventListener("click",e=>{ const b=e.target.closest("[data-insp]"); if (!b||b.disabled) return; const d=DISCBY[b.dataset.insp]; S.inspire={id:d.id,until:day()+2}; log(`Hai sussurrato un'idea nei loro sogni: ${d.n.toLowerCase()}.`,"imp"); dirty.disc=true; });
+void (e=>{ const b=e.target.closest("[data-insp]"); if (!b||b.disabled) return; const d=DISCBY[b.dataset.insp]; S.inspire={id:d.id,until:day()+2}; log(`Hai sussurrato un'idea nei loro sogni: ${d.n.toLowerCase()}.`,"imp"); dirty.disc=true; });
 
 const POWERS=[
   {k:"pioggia", n:"Pioggia", d:"Fai piovere oggi: meno sete, ma più freddo.", cd:2, run(){ S.weather="pioggia"; S.lightAt=-1; log("Hai chiamato la pioggia sul mondo.","imp"); return true; }},
@@ -1509,7 +1529,7 @@ function wanderers(){
   let bx=r.x, by=r.y; for (const [dx,dy] of DIRS){ if (inb(r.x+dx,r.y+dy) && passableT(tileAt(r.x+dx,r.y+dy))){ bx=r.x+dx; by=r.y+dy; break; } }
   newPerson(f,"F",bx,by,{age:(17+Math.floor(Math.random()*8))*YEAR_DAYS,known:basic});
   for (const p of S.people.slice(-2)) for (const q of S.people.slice(-2)) if (p!==q) p.rel[q.id]=25;
-  log(`Due viandanti, ${m} e ${f}, sono comparsi all'orizzonte.`,"imp"); dirty.people=true; return true;
+  log(`Due viandanti, ${m} e ${f}, sono comparsi all'orizzonte. Vengono da molto lontano.`,"imp"); dirty.people=true; return true;
 }
 function renderPowers(){
   const d=day();
@@ -1523,17 +1543,12 @@ function renderPowers(){
   <button class="btn" id="newWorld">Crea un nuovo mondo</button>
   <p class="hint">Mondo n° ${S.seed} · la partita si salva da sola ogni alba in questo browser.</p>`;
 }
-$("tab-powers").addEventListener("click",e=>{
-  const b=e.target.closest("[data-pow]");
-  if (b && !b.disabled){ const p=POWERS.find(x=>x.k===b.dataset.pow); if (p.run()){ S.powers[p.k]=day(); } dirty.powers=true; return; }
-  if (e.target.id==="newWorld"){
-    if (!e.target.dataset.sure){ e.target.dataset.sure="1"; e.target.textContent="Sicuro? Tocca di nuovo per ricominciare"; e.target.classList.add("primary"); return; }
-    const m=$("nmM").value.trim()||"Adamo", f=$("nmF").value.trim()||"Eva";
-    $("over").hidden=true; hideBanner(); newGame(m,f); saveGame(); setTab("people");
-  }
-});
-$("tab-powers").addEventListener("change",e=>{ if (e.target.id==="optReveal"){ S.opts.reveal=e.target.checked; } });
-
+$("newWorld").onclick=e=>{
+  const b=e.currentTarget;
+  if (!b.dataset.sure){ b.dataset.sure="1"; b.textContent="Sicuro? Tocca di nuovo"; b.classList.add("primary"); setTimeout(()=>{ delete b.dataset.sure; b.textContent="Nuovo mondo"; b.classList.remove("primary"); },4000); return; }
+  delete b.dataset.sure; b.textContent="Nuovo mondo"; b.classList.remove("primary");
+  $("over").hidden=true; hideBanner(); newGame("Adamo","Eva"); saveGame(); setTab("people");
+};
 function updateHeader(){
   $("hDay").textContent=`Giorno ${day()}`;
   $("hSeason").textContent=`${SEASONS[season()]} · anno ${Math.floor((day()-1)/YEAR_DAYS)+1}`;
@@ -1545,7 +1560,6 @@ function updateHeader(){
   $("dayMark").style.left=`calc(${tod()/DAY*100}% - 1px)`;
   $("play").textContent=paused?"Riprendi":"Pausa";
   for (const b of $("speeds").children) b.setAttribute("aria-pressed",String(+b.dataset.sp===speed));
-  $("pauseDawn").checked=!!S.opts.pauseDawn;
 }
 let lastSig="";
 function updateUI(){
@@ -1555,13 +1569,11 @@ function updateUI(){
   if (tab==="people"){ if (dirty.people){ renderPeople(); dirty.people=false; } if (dirty.detail){ renderDetail(); dirty.detail=false; } updatePeople(); updateDetail(); }
   if (tab==="diary" && dirty.diary){ renderDiary(); dirty.diary=false; }
   if (tab==="disc" && dirty.disc){ renderDisc(); dirty.disc=false; }
-  if (tab==="powers" && dirty.powers){ renderPowers(); dirty.powers=false; }
 }
 
 $("play").onclick=()=>{ paused=!paused; if (!paused) hideBanner(); };
 $("speeds").onclick=e=>{ const b=e.target.closest("[data-sp]"); if (b) speed=+b.dataset.sp; };
-$("nextDay").onclick=()=>{ runToDawn=true; paused=false; hideBanner(); };
-$("pauseDawn").onchange=e=>{ S.opts.pauseDawn=e.target.checked; };
+$("director").onchange=e=>{ director=e.target.checked; holdUntil=0; lastFocus=0; };
 document.addEventListener("keydown",e=>{ if (e.target.closest("input")) return; if (e.code==="Space"){ e.preventDefault(); paused=!paused; if (!paused) hideBanner(); } });
 document.addEventListener("visibilitychange",()=>{ if (document.hidden) saveGame(); });
 
@@ -1570,6 +1582,7 @@ function frame(t){
   const dt=Math.min(.25,(t-lastT)/1000||0); lastT=t;
   if (!paused && !S.over){ acc+=dt*8*speed; let n=0; while (acc>=1 && n<400){ tick(); acc-=1; n++; if (paused) { acc=0; break; } } }
   else acc=0;
+  directorTick(t);
   draw(t);
   requestAnimationFrame(frame);
 }

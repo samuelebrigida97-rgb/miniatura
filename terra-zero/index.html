@@ -72,6 +72,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .tileinfo b{display:block;font-family:var(--f-display);font-size:15px}
 .tileinfo ul{margin:4px 0 0;padding-left:16px;color:var(--hud-muted)}
 .over{position:absolute;inset:0;background:rgba(8,12,11,.82);color:#efe9da;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}
+.over .btn:not(.primary){color:var(--ink)}
 .over h2{font:800 30px/1.1 var(--f-display);margin:0}
 
 .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -114,6 +115,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .dhead h2{margin:0;font:800 22px/1 var(--f-display)}
 .dhead .meta{margin:2px 0 0;color:var(--muted);font-size:13px}
 .dhead .btn{margin-left:auto;padding:6px 10px;font-size:13px}
+.plan{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:3px;font-size:13.5px}
+.plan li{display:flex;gap:8px;align-items:baseline;color:var(--muted)}
+.plan li.now{color:var(--ink);font-weight:700}
+.plan li.done{text-decoration:line-through}
+.said{margin:6px 0 0;font-size:13.5px}
+.said b{color:var(--ochre)}
+.aibox{display:flex;flex-direction:column;gap:8px;max-width:520px;align-items:center}
+.aibox p{margin:0;color:#c9d2cb;line-height:1.5}
+.aibox .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.aistate{font-size:13px;color:var(--muted)}
 .thought{margin:0;font-style:italic;background:var(--panel);border-radius:10px;padding:8px 10px;border:1px solid var(--line)}
 .doing{font-size:14px}
 .doing span{color:var(--muted)}
@@ -191,7 +202,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   <header class="top">
     <div class="brand">
       <h1>Terra <span>Zero</span></h1>
-      <p>Due persone, nessuno strumento, un mondo intero. Mettiti comodo e guarda come se la cavano, giorno dopo giorno.</p>
+      <p>Adamo ed Eva sono due intelligenze artificiali in un corpo umano. Ogni mattina pensano davvero, con la propria testa, a cosa fare. Tu guardi.</p>
     </div>
     <div class="stats">
       <div class="stat"><small>Abitanti</small><b id="sPop">2</b></div>
@@ -221,6 +232,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
         <button data-sp="1" aria-pressed="true">1×</button><button data-sp="3" aria-pressed="false">3×</button><button data-sp="10" aria-pressed="false">10×</button><button data-sp="30" aria-pressed="false">30×</button>
       </div>
       <label class="tog"><input type="checkbox" id="director" checked> Regia automatica</label>
+      <span class="aistate" id="aiState"></span>
       <div class="daybar" title="Ora del giorno"><i></i><b id="dayMark"></b></div>
       <button class="btn" id="newWorld">Nuovo mondo</button>
     </div>
@@ -533,7 +545,7 @@ function newGame(n1, n2, seed){
   a.thought="Dove sono? Che posto è questo?"; b.thought="Che fame… e che bel cielo.";
   for (const k in AK) for (let i=0;i<AK[k].init;i++){ const p=randomTileFor(k, k==="lupo"?16:6); if (p) spawnAnimal(k,p.x,p.y); }
   for (const p of S.people) markSeen(p,6);
-  log(`La storia comincia. ${a.name} e ${b.name} si svegliano in un prato, senza niente tra le mani.`, "imp");
+  log(`La storia comincia. ${a.name} e ${b.name} aprono gli occhi in un prato. Non hanno niente tra le mani e non sanno niente di questo mondo.`, "imp");
   selected = a.id; cam.follow = a.id; cam.x=x+.5; cam.y=y+.5;
   paused=false; runToDawn=false;
   fitZoom(); dirty.all();
@@ -622,8 +634,8 @@ function tempNow(){
 }
 
 // ================= diario =================
-function log(text, kind){
-  S.today.push({ h:timeStr(), x:text, k:kind||"" }); if (kind) toast(text, kind); dirty.diary=true;
+function log(text, kind, mind){
+  S.today.push({ h:timeStr(), x:text, k:kind||"", m:mind?1:0 }); if (kind) toast(text, kind); dirty.diary=true;
   if (kind && director && performance.now()>holdUntil){ const p=alive().find(q=>text.startsWith(q.name)) || alive().find(q=>text.includes(q.name)); if (p) focusOn(p.id); }
 }
 function focusOn(id){ if (selected!==id){ selected=id; dirty.detail=true; dirty.people=true; } cam.follow=id; lastFocus=performance.now(); }
@@ -635,14 +647,18 @@ function directorTick(now){
   const busy=others.filter(p=>p.task && !BORING.includes(p.task.k));
   focusOn(pick(busy.length?busy:others).id);
 }
-function say(a, k, pname){ const arr=THOUGHTS[k]; if (arr) a.thought = pick(arr).replace("{p}", pname||"qualcuno"); }
+function say(a, k, pname){
+  if (k==="_crit"){ a.thought="Il corpo non regge: prima devo pensare a sopravvivere."; return; }
+  if (a.aiDay===day() && !["bere","scaldarsi"].includes(k)) return;
+  const arr=THOUGHTS[k]; if (arr) a.thought = pick(arr).replace("{p}", pname||"qualcuno");
+}
 
 // ================= scoperte =================
 function expOk(a,d,insp){ for (const k in d.exp) if ((a.exp[k]||0) < Math.ceil(d.exp[k]*(insp?.5:1))) return false; return true; }
-const inspired = id => S.inspire && S.inspire.id===id && day()<=S.inspire.until;
+const inspired = (id,a) => !!(a && a.idea && a.idea.id===id && a.idea.d===day());
 function canTry(a,d,action,ctx){
   if (has(a,d.id) || d.special || !d.on.includes(action) || !reqsMet(a,d)) return false;
-  if (!expOk(a,d,inspired(d.id))) return false;
+  if (!expOk(a,d,inspired(d.id,a))) return false;
   if (d.mat && !d.mat(a)) return false;
   if (d.cond && !d.cond(a,ctx||{})) return false;
   return true;
@@ -651,8 +667,9 @@ function tryDisc(a, action, ctx={}){
   if (isChild(a) && a.age<200) return;
   for (const d of DISC){
     if (!canTry(a,d,action,ctx)) continue;
-    let p = d.p*(.6+a.traits.cur*.8)*(inspired(d.id)?4:1);
-    if (Math.random()<p){ learn(a,d.id); if (inspired(d.id)) S.inspire=null; return; }
+    const ins=inspired(d.id,a);
+    let p = d.p*(.6+a.traits.cur*.8)*(ins?5:1);
+    if (Math.random()<p){ learn(a,d.id); if (ins){ a.idea.ok=true; log(`L'idea di ${a.name} ha funzionato!`,"imp"); } return; }
   }
 }
 function learn(a, id, teacher){
@@ -835,7 +852,7 @@ const TASKS = {
       const an=animalById(k.fol.id); if (!an) return; k.tries=(k.tries||0)+1; inc(a,"caccia");
       const def=AK[an.k];
       const dog=S.animals.some(d=>d.k==="cane" && d.owner===a.id && dist(d,a)<4);
-      let p=(has(a,"arco")?.5:.28)+.2*a.traits.cor+(dog?.15:0)+(an.k==="coniglio"?.1:0);
+      let p=(has(a,"arco")?.5:.28)+.2*a.traits.cor+(dog?.15:0)+(an.k==="coniglio"?.1:0); if (!has(a,"lancia")) p*=.3;
       if (Math.random()<p){
         S.animals.splice(S.animals.indexOf(an),1);
         const m=addItem(a,"carne",def.meat); if (def.skin) addItem(a,"pelli",def.skin);
@@ -884,7 +901,7 @@ const TASKS = {
     dur:40,
     done(a){ const t=tileAt(tx(a),ty(a)); if (!shelterT(t)) return; t.paint=(t.paint||0)+1; a.lastPaint=day(); a.needs.umore=Math.min(100,a.needs.umore+25);
       log(`${a.name} ha dipinto sulla parete ${pick(["un cervo in corsa","le mani di tutta la famiglia","il sole e la luna","la caccia al cinghiale","il fuoco con tutti intorno","un grande pesce","le stelle di stanotte"])}.`, "imp"); } },
-  sperimenta:{ plan:a=>sperimentaCands(a).length ? here(a,"sperimenta") : false, dur:25, done(a){ a.lastTry=S.tick; tryDisc(a,"sperimenta"); } },
+  sperimenta:{ plan:a=>(sperimentaCands(a).length || (a.idea && a.idea.d===day())) ? here(a,"sperimenta") : false, dur:25, done(a){ a.lastTry=S.tick; tryDisc(a,"sperimenta"); } },
   cuci:{ plan:a=>(has(a,"vestiti") && !a.clothes && (a.inv.pelli||0)>=2) ? here(a,"cuci") : false, dur:30,
     done(a){ if ((a.inv.pelli||0)<2) return; useItem(a.inv,"pelli",2); a.clothes=true; log(`${a.name} indossa i primi vestiti di pelle.`, "imp"); } },
   deposita:{ plan(a){ if (!storeOf(a)) return false; return go(a,"deposita",pathTo(a,a.home.x,a.home.y)); }, dur:6,
@@ -906,7 +923,7 @@ function socialize(a,b){
     if (can.length && Math.random()<(lang?.55:.22)) learn(r,pick(can),s);
   }
   for (const [g,r] of [[a,b],[b,a]]) if (r.needs.cibo<40 && foodCount(g.inv)>1){ let n=0; for (const f of Object.keys(FOOD)) while (g.inv[f]>0 && n<2){ useItem(g.inv,f,1); r.inv[f]=(r.inv[f]||0)+1; n++; } if (n){ eatFrom(r,r.inv,2); if (Math.random()<.3) log(`${g.name} ha diviso il suo cibo con ${r.name}.`); } }
-  if (S.words.length<CONCEPTS.length && Math.random()<.5){
+  if (!aiOn() && S.words.length<CONCEPTS.length && Math.random()<.5){
     const c=CONCEPTS[S.words.length], w=makeWord(); S.words.push({c,w,by:a.name,day:day()});
     log(`${a.name} indica ${c==="io"||c==="tu"?"se stess"+sexW(a,"o","a"):"qualcosa"} e dice «${w[0].toUpperCase()+w.slice(1)}!». ${b.name} ripete: ora «${w}» vuol dire “${c}”.`);
     dirty.disc=true;
@@ -960,7 +977,7 @@ function decide(a){
   if (has(a,"vestiti") && !a.clothes && (a.inv.pelli||0)>=2) addOpt(opts,"cuci",50);
   if (canStore(a) && a.home && foodCount(a.inv)>=6) addOpt(opts,"deposita",30);
   const cands=sperimentaCands(a);
-  const insp=cands.some(d=>inspired(d.id));
+  const insp=cands.some(d=>inspired(d.id,a));
   if (cands.length && (insp || S.tick-(a.lastTry||-999)>DAY*.6)) addOpt(opts,"sperimenta",4+14*tr.cur+(insp?40:0));
   addOpt(opts,"vaga",4);
   if (a.order){
@@ -968,6 +985,12 @@ function decide(a){
     const o=ORDERS.find(o=>o.k===a.order.k);
     if (!crit && o){ for (const op of opts) if (o.tasks.includes(op[0])) op[1]+=150; if (o.k==="vai") opts.push(["vai",999]); }
     else if (crit && !a.order.warned){ a.order.warned=true; a.thought="Prima devo pensare a sopravvivere."; }
+  }
+  const step=planStep(a);
+  if (step && !isNight()){
+    const crit=n.acqua<18||n.cibo<12||n.energia<8||a.salute<25||(cold&&n.calore<18);
+    if (!crit){ for (const k of step.tasks){ const o=opts.find(op=>op[0]===k); if (o) o[1]+=160; else opts.push([k,160]); } }
+    else if (!a.critSaid){ a.critSaid=true; say(a,"_crit"); }
   }
   opts.sort((p,q)=>q[1]-p[1]);
   for (const [k] of opts) if (TASKS[k].plan(a)) return;
@@ -1047,7 +1070,7 @@ function runTask(a){
   if (def.work) def.work(a,k);
   if (a.task!==k) return;
   const dur=typeof def.dur==="function"?def.dur(a,k):def.dur;
-  if (k.t>=dur){ a.task=null; def.done(a,k); }
+  if (k.t>=dur){ a.task=null; def.done(a,k); advancePlan(a,k.k); }
 }
 
 // ================= animali =================
@@ -1122,7 +1145,8 @@ function rollWeather(){
 }
 function closeDay(){
   const d=day()-1;
-  const notes=alive().filter(p=>!isChild(p)||p.age>200).map(p=>`${p.name}: «${eveningLine(p)}»`);
+  for (const p of alive()){ const m=p.mem&&p.mem[p.mem.length-1]; if (m && m.d===d){ m.esito=S.today.filter(e=>!e.m && e.x.includes(p.name)).slice(-5).map(e=>e.x).join(" "); if (p.idea && p.idea.d===d) m.esito+=(p.idea.ok?" L'esperimento è riuscito.":" L'esperimento non ha dato risultati."); } }
+  const notes=alive().map(p=>{ const m=p.mem&&p.mem[p.mem.length-1]; return m && m.d===d ? `${p.name} quel mattino pensava: «${m.pensiero}»` : `${p.name}: «${eveningLine(p)}»`; });
   const st=S.dstat, sum=[];
   if (st.cibo) sum.push(`${st.cibo} cose da mangiare raccolte`); if (st.legna) sum.push(`${st.legna} legna`); if (st.pesci) sum.push(`${st.pesci} pesci`); if (st.prede) sum.push(`${st.prede} prede`); if (st.chiacchiere) sum.push(`${st.chiacchiere} chiacchierate`);
   S.diary.unshift({ d, s:season(d), w:S.weather, ev:S.today, notes, sum:sum.join(" · ") });
@@ -1175,18 +1199,10 @@ function newDay(){
     if (p.born && p.age===ADULT){ log(`${p.name} è ${sexW(p,"cresciuto","cresciuta")}: ora è ${sexW(p,"un adulto","un'adulta")} e decide da sé.`, "imp"); for (const id of [...(personById(p.mother)?.known||[]),...(personById(p.father)?.known||[])]) if (!has(p,id) && reqsMet(p,DISCBY[id]) && Math.random()<.6) p.known.push(id); }
     if (isChild(p) && p.age>120){ const par=[personById(p.mother),personById(p.father)].filter(Boolean); const can=par.flatMap(x=>x.known).filter(id=>!has(p,id)&&reqsMet(p,DISCBY[id])); if (can.length && Math.random()<.12) p.known.push(pick(can)); }
     if (p.order && p.order.k!=="vai"){ p.order=null; }
-    if (p.preg){ p.preg--; if (p.preg===0) birth(p); }
-    else if (p.sex==="F" && !isChild(p) && p.sleptNear && p.partner){
-      const m=personById(p.partner);
-      if (m && m.alive && (p.rel[m.id]||0)>=55 && p.salute>55 && p.needs.cibo>30 && alive().length<MAX_POP && d-p.lastBirth>40 && Math.random()<.07){
-        p.preg=45; log(`${p.name} aspetta un bambino da ${m.name}!`, "imp");
-      }
-    }
     p.sleptNear=false;
   }
-  const single=alive().filter(p=>!isChild(p) && !p.partner).length;
-  if (single>0 && d-(S.lastWander||0)>60 && alive().length<MAX_POP-2 && Math.random()<.03){ if (wanderers()) S.lastWander=d; }
   saveGame();
+  if (aiOn()) morningThoughts();
   if (S.opts.pauseDawn || runToDawn){ paused=true; runToDawn=false; showBanner(`Alba del giorno ${d}. Leggi il diario, dai gli ordini e poi premi “Avanza di un giorno”.`); }
   dirty.all();
 }
@@ -1198,6 +1214,203 @@ function birth(m){
   m.lastBirth=day(); m.needs.umore=100; if (f) f.needs.umore=100;
   c.rel[m.id]=70; m.rel[c.id]=80; if (f){ c.rel[f.id]=60; f.rel[c.id]=80; }
   log(`È ${sex==="M"?"nato":"nata"} ${name}, ${sex==="M"?"figlio":"figlia"} di ${m.name}${f?" e "+f.name:""}!`, "imp");
+}
+
+
+// ================= la mente: due IA vere =================
+let sampleFn=null, sampleChecked=false, aiBusy=false, started=false, aiWanted=true;
+const aiOn = () => !!(sampleFn && aiWanted && S && !S.aiOff);
+const PLAN = {
+  cercare_cibo:{n:"cercare cibo (bacche, frutti, funghi, radici)", t:["raccogli","mangiare"]},
+  bere:{n:"andare a bere", t:["bere"]},
+  raccogliere_legna:{n:"raccogliere rami e legna", t:["legna"]},
+  raccogliere_pietre:{n:"cercare e raccogliere pietre", t:["pietre"]},
+  raccogliere_fibre:{n:"raccogliere erba lunga e canne", t:["fibre"]},
+  esplorare:{n:"esplorare zone mai viste", t:["esplora"]},
+  sperimentare:{n:"provare un esperimento con le mani (descrivilo in \"esperimento\")", t:["sperimenta"]},
+  stare_con_compagno:{n:"cercare l'altra persona e stare insieme", t:["compagnia"]},
+  riposare:{n:"riposare all'ombra", t:["riposa"]},
+  pescare:{n:"provare a prendere pesci nell'acqua bassa", t:["pesca"]},
+  cacciare:{n:"cacciare un animale", t:["caccia"]},
+  costruire_riparo:{n:"costruire una capanna (servono 8 legna e 2 fibre)", t:["costruisci","legna","fibre"], need:"capanna"},
+  migliorare_casa:{n:"trasformare la capanna in casa di pietra (5 pietre, 3 argilla)", t:["costruisci","pietre"], need:"casa"},
+  accendere_fuoco:{n:"accendere o ravvivare un fuoco (serve legna)", t:["accendi","legna"], need:"fuoco"},
+  fare_scorte:{n:"raccogliere cibo e portarlo a casa per i giorni difficili", t:["raccogli","deposita"]},
+  seminare:{n:"seminare vicino a casa", t:["pianta"], need:"agricoltura"},
+  addomesticare:{n:"avvicinare e addomesticare un animale", t:["addomestica"], need:"addomesticamento"},
+  cucire_vestiti:{n:"cucire vestiti di pelle (servono 2 pelli)", t:["cuci"], need:"vestiti"},
+  dipingere:{n:"dipingere sulla parete del riparo", t:["dipingi"], need:"pittura"}
+};
+const STEP_N = { esplora:2, sperimenta:1, costruisci:1, accendi:1, compagnia:1, riposa:1, cuci:1, dipingi:1, pianta:3, deposita:1, caccia:1, bere:1 };
+const IDEAS = {
+  selce:["scheggi","affil","lama","tagli","spacc","battere","batto","sbatt","colpire","percuot"],
+  bastone:["bastone","appunt","scav","ramo"],
+  fibre:["intrecc","corda","fibr","canne","legare","lego","annod","erba"],
+  fuoco:["fuoco","scintill","fiamm","accend","brace","sfreg","fumo","calore"],
+  lancia:["lancia","punta","infilz","giavell","asta"],
+  cesto:["cesto","cesta","contenit","borsa","sacca","portare di più"],
+  capanna:["capanna","riparo","tetto","rifugio","tenda","costru"],
+  cottura:["cuoc","arrost","cottura","abbrust"],
+  pesca:["pesc","pesce"],
+  vestiti:["pelle","pelli","vestit","copr","indoss"],
+  vasi:["argilla","vaso","vasi","ciotol","fango","creta"],
+  agricoltura:["semi","seme","piant","semin","coltiv","germogl","terra"],
+  arco:["arco","frecc","tender","elastic"],
+  medicina:["erbe","erba","curar","ferit","medic","foglie"],
+  addomesticamento:["addomest","avvicin","nutrire","cucciol","capra","amico animale"],
+  musica:["ritmo","cant","music","tamburo","suono","fischi"],
+  pittura:["dipin","disegn","carbone","ocra","parete","segni"],
+  casa:["muro","muri","mattoni","fango","casa","pietre e"],
+  pane:["pane","macin","farina","schiacci"]
+};
+function planStep(a){
+  const pl=a.plan; if (!pl || pl.d!==day() || !pl.steps.length) return null;
+  const timeIdx=Math.floor(tod()/(NIGHT/pl.steps.length));
+  const i=Math.max(pl.i,timeIdx); if (i>=pl.steps.length) return null;
+  pl.cur=i; return PLAN[pl.steps[i]] ? {k:pl.steps[i], tasks:PLAN[pl.steps[i]].t} : null;
+}
+function advancePlan(a,k){
+  const st=planStep(a); if (!st || !st.tasks.includes(k)) return;
+  a.plan.n=(a.plan.n||0)+1; if (a.plan.n>=(STEP_N[st.tasks[0]]||2)){ a.plan.i=a.plan.cur+1; a.plan.n=0; }
+}
+function planHtml(p){
+  let h="";
+  if (p.plan && p.plan.d===day() && p.plan.steps.length){
+    const cur=p.plan.cur??0;
+    h+=`<h3>Il suo piano per oggi</h3><ol class="plan" style="margin-top:6px">${p.plan.steps.map((k,i)=>`<li class="${i<cur?"done":i===cur?"now":""}"><span>${i+1}.</span><span>${esc((PLAN[k]?.n||k).replace(/ \(.*\)$/,""))}</span></li>`).join("")}</ol>`;
+  }
+  if (p.idea && p.idea.d===day()) h+=`<p class="said"><b>Idea:</b> ${esc(p.idea.text)}</p>`;
+  if (p.saidToday) h+=`<p class="said"><b>Ha detto:</b> «${esc(p.saidToday)}»</p>`;
+  return h;
+}
+function wrapText(t,maxW){ const words=t.split(" "), out=[]; let line=""; for (const w of words){ const tt=line?line+" "+w:w; if (ctx.measureText(tt).width>maxW && line){ out.push(line); line=w; } else line=tt; } if (line) out.push(line); if (out.length>3) out[2]=out[2].replace(/.{0,2}$/,"…"); return out; }
+const DIRN=["est","sud-est","sud","sud-ovest","ovest","nord-ovest","nord","nord-est"];
+function dirTo(dx,dy){ if (!dx && !dy) return "qui"; return DIRN[Math.round(Math.atan2(dy,dx)/(Math.PI/4)+8)%8]; }
+function feel(v){ return v>75?"bene":v>50?"abbastanza bene":v>25?"male":"malissimo"; }
+const aTo = n => (/^[aeiou]/i.test(n)?"ad ":"a ")+n;
+const PLUR = { coniglio:"conigli", cervo:"cervi", cinghiale:"cinghiali", capra:"capre", lupo:"lupi", cane:"cani" };
+function nearestDesc(a, pred, label, maxD=40){ const r=bfs(tx(a),ty(a),pred,maxD); if (!r) return null; const d=r.path.length; return `${label} ${d===0?"proprio qui":`a ${d} passi verso ${dirTo(r.x-tx(a),r.y-ty(a))}`}`; }
+function surroundings(a){
+  const x0=tx(a), y0=ty(a), out=[];
+  const t0=tileAt(x0,y0); out.push(`Sei in: ${TNAME[t0.t].toLowerCase()}${t0.struct?` (${t0.struct==="grotta"?"una grotta":t0.struct==="fuoco"?"un focolare":t0.struct})`:""}.`);
+  const w=nearestDesc(a,(t,x,y)=>t.t===T.SHALLOW||nearWater(x,y),"acqua da bere"); out.push(w?w+".":"Non conosci ancora nessuna fonte d'acqua.");
+  const kinds={}; let food=0;
+  for (let y=y0-8;y<=y0+8;y++) for (let x=x0-8;x<=x0+8;x++){ if (!inb(x,y)) continue; const t=tileAt(x,y); if (!t.seen) continue;
+    if (t.berries>0){ kinds["cespugli con bacche"]=(kinds["cespugli con bacche"]||0)+1; food++; }
+    if (t.fruit>0){ const k=t.tree===3?"alberi con castagne":"alberi con frutti rossi"; kinds[k]=(kinds[k]||0)+1; food++; }
+    if (t.mush>0){ kinds["funghi"]=(kinds["funghi"]||0)+1; food++; }
+    if (t.grain>0){ kinds["spighe di farro selvatico"]=(kinds["spighe di farro selvatico"]||0)+1; food++; }
+    if (t.crop && t.crop.ripe){ kinds["campo maturo"]=(kinds["campo maturo"]||0)+1; }
+    if (t.tree>0) kinds._alberi=(kinds._alberi||0)+1;
+    if (t.stone>0) kinds._pietre=(kinds._pietre||0)+1;
+    if (t.flint>0) kinds._selce=(kinds._selce||0)+1;
+    if (t.clay) kinds._argilla=(kinds._argilla||0)+1;
+    if (t.reeds) kinds._canne=(kinds._canne||0)+1;
+  }
+  const fl=Object.entries(kinds).filter(([k])=>!k.startsWith("_")).map(([k,v])=>`${v} ${k}`);
+  out.push(fl.length?`Cibo visibile qui intorno: ${fl.join(", ")}.`:"Qui intorno non vedi niente da mangiare.");
+  const mat=[]; if (kinds._alberi) mat.push(`${kinds._alberi} alberi`); if (kinds._pietre) mat.push("sassi"); if (kinds._selce) mat.push("pietre scure e lucide che si spezzano in schegge"); if (kinds._argilla) mat.push("terra rossa e appiccicosa vicino all'acqua"); if (kinds._canne) mat.push("canne lungo la riva");
+  if (mat.length) out.push(`Intorno ci sono anche: ${mat.join(", ")}.`);
+  const an={}; for (const z of S.animals){ if (dist(z,a)>10 || !tileAt(Math.round(z.x),Math.round(z.y)).seen) continue; const n=z.tame?`${AK[z.k].n.toLowerCase()} che vive con voi`:AK[z.k].n.toLowerCase(); an[n]=(an[n]||0)+1; }
+  const al=Object.entries(an).map(([k,v])=>v===1?`1 ${k}`:`${v} ${PLUR[k]||k}`); if (al.length) out.push(`Animali vicini: ${al.join(", ")}.`);
+  const cave=nearestDesc(a,t=>t.struct==="grotta","una grotta",50); if (cave && !a.home) out.push(cave.charAt(0).toUpperCase()+cave.slice(1)+".");
+  const ht=homeTile(a); out.push(ht ? `Il vostro riparo è ${ht.struct==="grotta"?"una grotta":ht.struct==="casa"?"una casa di pietra":"una capanna"}${(()=>{ const d=Math.round(Math.hypot(a.home.x-x0,a.home.y-y0)); return d<1?", sei lì":`, a ${d} passi verso ${dirTo(a.home.x-x0,a.home.y-y0)}`; })()}.${ht.store&&foodCount(ht.store)?` Dentro ci sono ${foodCount(ht.store)} scorte di cibo.`:""}` : "Non avete ancora un riparo: avete dormito all'aperto.");
+  const f=fireNear(x0,y0,12); if (f) out.push(`C'è un fuoco acceso a ${Math.round(Math.hypot(f.x-x0,f.y-y0))} passi.`);
+  out.push(`Avete visto circa il ${Math.round(S.seenCount/(W*H)*100)}% del mondo.`);
+  return out.join("\n");
+}
+function buildPrompt(a){
+  const b=alive().find(p=>p!==a); const n=a.needs; const s=season();
+  const inv=Object.entries(a.inv).filter(([,v])=>v>0).map(([k,v])=>`${v} ${ITEM[k]||k}`).join(", ")||"niente, hai le mani vuote";
+  const known=a.known.map(id=>DISCBY[id].n.toLowerCase()).join(", ")||"niente: non hai ancora inventato o imparato nulla";
+  const plans=Object.entries(PLAN).filter(([,v])=>!v.need || has(a,v.need)).map(([k,v])=>`- ${k}: ${v.n}`).join("\n");
+  const mem=(a.mem||[]).slice(-6).map(m=>`Giorno ${m.d}: pensavi «${m.pensiero}». Piano: ${m.piano.join(", ")||"nessuno"}.${m.esperimento?` Esperimento: ${m.esperimento}.`:""}${m.esito?` Cosa è successo: ${m.esito}`:""}`).join("\n")||"Nessuno: è il tuo primo giorno di vita in questo mondo.";
+  const words=S.words.length?S.words.map(w=>`«${w.w}» = ${w.c}`).join(", "):"nessuna";
+  const lang=has(a,"linguaggio")&&b&&has(b,"linguaggio");
+  return `Sei ${a.name}, ${sexW(a,"un uomo","una donna")} di ${Math.floor(a.age/YEAR_DAYS)} anni. Sei un'intelligenza artificiale che vive dentro un corpo umano, in un mondo naturale selvaggio. Non hai strumenti né vestiti e non hai nessuna conoscenza moderna: puoi scoprire le cose solo provando, osservando e ragionando, come un vero essere umano all'inizio della storia. ${b?`Con te c'è solo ${b.name}, ${sexW(b,"un uomo","una donna")}: siete gli unici due esseri umani del mondo. Anche ${b.name} è un'intelligenza artificiale che decide con la propria testa.`:"Sei rimast"+sexW(a,"o","a")+" sol"+sexW(a,"o","a")+" al mondo."} Il tuo corpo ha bisogni reali: fame, sete, sonno, freddo, emozioni. Se li trascuri, muori. Decidi tu come vivere.
+
+OGGI: giorno ${day()}, ${SEASONS[s].toLowerCase()} (ogni stagione dura 30 giorni, l'inverno è gelido e quasi senza cibo). Tempo: ${WEATHER[S.weather].n.toLowerCase()}, circa ${Math.round(tempNow())}°C.
+COME STAI: fame ${100-Math.round(n.cibo)}/100, sete ${100-Math.round(n.acqua)}/100, energia: ${feel(n.energia)}, calore del corpo: ${feel(n.calore)}, umore: ${feel(n.umore)}, salute ${Math.round(a.salute)}/100.${a.clothes?" Indossi vestiti di pelle.":""}
+HAI CON TE: ${inv}.
+SAI FARE: ${known}.
+COSA VEDI:
+${surroundings(a)}
+${b?`${b.name.toUpperCase()}: è a ${Math.round(dist(a,b))} passi da te. Ti sembra di vederl${sexW(b,"o","a")} stare ${feel(Math.min(b.needs.cibo,b.needs.acqua,b.salute))}. Ieri ${b.name} ti ha comunicato: ${b.saidToday?`«${b.saidToday}»`:"niente"}.`:""}
+LINGUAGGIO: ${lang?"ormai parlate una lingua vostra.":"non esiste ancora una lingua comune. Puoi comunicare solo con gesti, versi e le poche parole inventate. Descrivi i gesti tra asterischi, per esempio: *indica il fiume* «Muta!»"} Parole inventate finora: ${words}.
+I TUOI ULTIMI GIORNI:
+${mem}
+
+ATTIVITÀ POSSIBILI (scegline da 1 a 4 per oggi, in ordine):
+${plans}
+
+Se vuoi inventare qualcosa, scegli "sperimentare" e scrivi in "esperimento" cosa provi concretamente a fare con le mani e con quello che hai o vedi. Niente magia e niente conoscenze moderne: idee semplici, da essere umano curioso.
+Puoi inventare al massimo una nuova parola al giorno per una cosa importante.
+
+Rispondi solo con questo JSON:
+{"pensiero":"cosa pensi stamattina, in prima persona, massimo 35 parole","piano":["attività",...],"esperimento":"cosa provi, oppure stringa vuota","messaggio":"cosa comunichi oggi ${b?aTo(b.name):"a nessuno"}, con gesti e parole, massimo 25 parole","nuova_parola":{"suono":"una parola inventata, oppure stringa vuota","significato":"cosa vuol dire in italiano"}}`;
+}
+function applyMind(a, r){
+  if (!r || typeof r!=="object") return false;
+  const d=day();
+  const pens=String(r.pensiero||"").trim().slice(0,240);
+  const steps=(Array.isArray(r.piano)?r.piano:[]).map(x=>String(x).trim().toLowerCase().replace(/\s+/g,"_")).filter(k=>PLAN[k] && (!PLAN[k].need || has(a,PLAN[k].need))).slice(0,4);
+  a.plan={d, steps, i:0, n:0, cur:0}; a.aiDay=d; a.critSaid=false;
+  if (pens) a.thought=pens;
+  const esp=String(r.esperimento||"").trim().slice(0,200);
+  a.idea=null;
+  if (esp){
+    const low=esp.toLowerCase();
+    let best=null, score=0;
+    for (const dd of DISC){ if (has(a,dd.id) || dd.special || !reqsMet(a,dd)) continue; const kw=IDEAS[dd.id]||[]; const sc=kw.filter(k=>low.includes(k)).length; if (sc>score){ score=sc; best=dd.id; } }
+    a.idea={d, text:esp, id:best, ok:false};
+    if (!steps.includes("sperimentare")) a.plan.steps.push("sperimentare");
+    log(`${a.name} ha un'idea: «${esp}»`,"",1);
+  }
+  const msg=String(r.messaggio||"").trim().slice(0,200);
+  a.saidToday=msg||"";
+  if (msg){ a.speech={text:msg, until:S.tick+70}; const b=alive().find(p=>p!==a); log(`${a.name}${b?" "+aTo(b.name):""}: «${msg}»`,"",1); }
+  const nw=r.nuova_parola;
+  if (nw && typeof nw==="object"){ const w=String(nw.suono||"").trim().toLowerCase().replace(/[^a-zà-ù'\- ]/g,"").slice(0,16), c=String(nw.significato||"").trim().toLowerCase().slice(0,30);
+    if (w && c && !S.words.some(x=>x.w===w || x.c===c)){ S.words.push({w,c,by:a.name,day:d}); log(`${a.name} ha inventato una parola: «${w}» vuol dire “${c}”.`,"imp",1); dirty.disc=true;
+      if (S.words.length>=12) for (const p of alive()) if (!has(p,"linguaggio")) learn(p,"linguaggio"); } }
+  a.mem=a.mem||[]; a.mem.push({d, pensiero:pens||"…", piano:steps.map(k=>k.replace(/_/g," ")), esperimento:esp, esito:""}); if (a.mem.length>12) a.mem.shift();
+  a.task=null; dirty.detail=true;
+  return true;
+}
+const AI_ERR = { not_granted:"Hai scelto di non far pensare l'IA: continuano d'istinto.", sampling_disabled:"L'IA non è disponibile per questo account: continuano d'istinto.", rate_limited:"Troppe richieste all'IA per ora: oggi agiscono d'istinto, domattina riprovano.", session_expired:"La sessione è scaduta: accedi di nuovo per far pensare l'IA." };
+function morningThoughts(){
+  if (aiBusy) return;
+  const ppl=alive(); if (!ppl.length) return;
+  aiBusy=true; S.aiCalls=(S.aiCalls||0)+ppl.length;
+  showBanner(`<span>${ppl.map(p=>esc(p.name)).join(" ed ")} si svegliano e pensano a cosa fare oggi…</span>`);
+  updateAiState();
+  Promise.all(ppl.map(a=>sampleFn.json(buildPrompt(a),{modelTier:"default", cache:false}).then(r=>({a,r})).catch(e=>({a,e}))))
+    .then(res=>{
+      let fatal=null, soft=null;
+      for (const {a,r,e} of res){
+        if (e){ const c=e&&e.code; if (["not_granted","sampling_disabled","not_declared","capability_disabled","capability_removed","session_expired"].includes(c)) fatal=c; else soft=c||"upstream_error"; continue; }
+        if (!applyMind(a,r)) soft="invalid_json";
+      }
+      if (fatal){ S.aiOff=true; toast(AI_ERR[fatal]||"L'IA non è disponibile: continuano d'istinto.","bad"); }
+      else if (soft) toast(AI_ERR[soft]||"Stamattina un pensiero si è perso: agiranno d'istinto fino a domani.","bad");
+    })
+    .finally(()=>{ aiBusy=false; hideBanner(); updateAiState(); dirty.all(); });
+}
+function updateAiState(){
+  const el=$("aiState"); if (!el) return;
+  el.textContent = aiBusy ? "Stanno pensando…" : aiOn() ? `Mente IA attiva · ${S.aiCalls||0} pensieri` : sampleChecked && !sampleFn ? "Qui l'IA non è disponibile: agiscono d'istinto" : S && S.aiOff ? "Agiscono d'istinto" : "";
+}
+function showStart(fresh){
+  const o=$("over");
+  const can=!!sampleFn;
+  o.innerHTML=`<div class="aibox"><h2>${fresh?"Il mondo sta per cominciare":"Adamo ed Eva ti aspettano"}</h2>
+    <p>${fresh?"Due intelligenze artificiali stanno per svegliarsi in un corpo umano, in un mondo selvaggio. Non sanno niente e non hanno niente.":"Il loro mondo è rimasto fermo al giorno "+day()+"."} Ogni mattina ognuno dei due chiede a Claude di pensare al suo posto: cosa fare, cosa provare a inventare, cosa dire all'altro.</p>
+    ${can?`<p style="font-size:13px">Ogni giorno del mondo usa due richieste del tuo account Claude, una per Adamo e una per Eva. Mentre pensano, il tempo si ferma.</p>`:sampleChecked?`<p style="font-size:13px">Aperta così, la pagina non riesce a parlare con Claude. Aprila da claude.ai per vederli pensare con l'IA. Qui agiranno d'istinto.</p>`:`<p style="font-size:13px">Sto controllando se l'IA è disponibile…</p>`}
+    <div class="row">${can?`<button class="btn primary" id="goAi">${fresh?"Fai cominciare il mondo":"Riprendi a guardare"}</button>`:""}<button class="btn" id="goAuto">${can?"Guarda senza IA":fresh?"Fai cominciare il mondo":"Riprendi a guardare"}</button></div></div>`;
+  o.hidden=false;
+  const go=(ai)=>{ aiWanted=ai; if (ai) S.aiOff=false; started=true; o.hidden=true; paused=false; updateAiState(); if (ai && sampleFn) morningThoughts(); };
+  if ($("goAi")) $("goAi").onclick=()=>go(true);
+  $("goAuto").onclick=()=>go(false);
 }
 
 // ================= ciclo principale =================
@@ -1215,7 +1428,7 @@ function tick(){
 }
 
 // ================= salvataggio =================
-const SAVE_KEY="terra-zero-v1";
+const SAVE_KEY="terra-zero-ia-v1";
 function saveGame(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
 function loadGame(str){
   try{ const o=JSON.parse(str); if (!o || o.v!==1 || !o.tiles || o.tiles.length!==W*H) return false; S=o; S.opts.pauseDawn=false; S.inspire=null; WD=computeWD(S.tiles); colorCache={}; return true; }catch(e){ return false; }
@@ -1343,15 +1556,20 @@ function draw(time){
     const ic=p.task?ICON[p.task.k]:""; const sl=p.task&&p.task.k==="dormire"&&p.task.phase==="work";
     if (z>=13 && (ic||sl)){ ctx.font=`${fs+1}px system-ui,sans-serif`; ctx.fillText(sl?"💤":ic,px+w/2+fs*.6,py-r-2); }
   }
-  const sp=personById(selected);
-  if (sp && sp.alive && z>=12 && sp.thought){
+  if (z>=12) for (const sp of ppl){
+    const talking=sp.speech && S.tick<sp.speech.until;
+    if (!talking && sp.id!==selected) continue;
+    const raw=talking?sp.speech.text:sp.thought; if (!raw) continue;
     const px=ox+(sp.x+.5)*z, py=oy+(sp.y+.5)*z-z*.32-fs-12;
-    ctx.font=`italic 400 ${fs+1}px "Atkinson Hyperlegible",system-ui,sans-serif`;
-    const txt=sp.thought.length>60?sp.thought.slice(0,58)+"…":sp.thought; const w=Math.min(vw-20,ctx.measureText(txt).width+18), hh=fs+12;
-    const bx=clamp(px-w/2,10,vw-w-10), by=Math.max(10,py-hh);
-    ctx.fillStyle="rgba(250,246,236,.94)"; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx,by,w,hh,8) : ctx.rect(bx,by,w,hh); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(clamp(px,bx+10,bx+w-10)-5,by+hh); ctx.lineTo(clamp(px,bx+10,bx+w-10)+5,by+hh); ctx.lineTo(clamp(px,bx+10,bx+w-10),by+hh+6); ctx.fill();
-    ctx.fillStyle="#1b2a23"; ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillText(txt,bx+9,by+hh/2+1); ctx.textAlign="center"; ctx.textBaseline="bottom";
+    ctx.font=`${talking?"700":"italic 400"} ${fs+1}px "Atkinson Hyperlegible",system-ui,sans-serif`;
+    const lines=wrapText(raw, Math.min(260,vw-40)).slice(0,3);
+    const w=Math.min(vw-20,Math.max(...lines.map(l=>ctx.measureText(l).width))+18), lh=fs+5, hh=lines.length*lh+8;
+    const bx=clamp(px-w/2,10,vw-w-10), by=Math.max(10,py-hh), tip=clamp(px,bx+10,bx+w-10);
+    ctx.fillStyle=talking?"rgba(255,226,170,.97)":"rgba(250,246,236,.94)"; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx,by,w,hh,8) : ctx.rect(bx,by,w,hh); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(tip-5,by+hh); ctx.lineTo(tip+5,by+hh); ctx.lineTo(tip,by+hh+6); ctx.fill();
+    ctx.fillStyle="#1b2a23"; ctx.textAlign="left"; ctx.textBaseline="middle";
+    lines.forEach((l,i)=>ctx.fillText(l,bx+9,by+4+lh*i+lh/2+1));
+    ctx.textAlign="center"; ctx.textBaseline="bottom";
   }
 }
 
@@ -1410,7 +1628,7 @@ if (!["people","diary","disc"].includes(tab)) tab="people";
 function toast(text,kind){ const box=$("toasts"); if ([...box.children].some(c=>c.textContent===text)) return; const el=document.createElement("div"); el.className="toast "+(kind||""); el.textContent=text; box.appendChild(el); while (box.children.length>3) box.firstChild.remove(); setTimeout(()=>el.remove(),6000); }
 function showBanner(html){ const b=$("banner"); b.innerHTML=html; b.hidden=false; }
 function hideBanner(){ $("banner").hidden=true; }
-function showOver(){ const o=$("over"); o.innerHTML=`<h2>La storia di Terra Zero si è fermata</h2><p>Nessuno è sopravvissuto. Il mondo è durato ${day()} giorni e ha visto ${Object.keys(S.disc).length} scoperte.</p><button class="btn primary" id="overNew">Ricomincia con un nuovo mondo</button>`; o.hidden=false; $("overNew").onclick=()=>{ o.hidden=true; newGame("Adamo","Eva"); }; }
+function showOver(){ const o=$("over"); o.innerHTML=`<h2>La storia di Terra Zero si è fermata</h2><p>Nessuno è sopravvissuto. Il mondo è durato ${day()} giorni e ha visto ${Object.keys(S.disc).length} scoperte.</p><button class="btn primary" id="overNew">Ricomincia con un nuovo mondo</button>`; o.hidden=false; $("overNew").onclick=()=>{ o.hidden=true; newGame("Adamo","Eva"); started=false; showStart(true); }; }
 
 function select(id){ selected=id; cam.follow=id; dirty.detail=true; dirty.people=true; if (tab!=="people") setTab("people"); }
 function setTab(t){ tab=t; try{ localStorage.setItem("terra-zero-tab",t); }catch(e){} for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected",b.dataset.tab===t); for (const k of ["people","diary","disc"]) $("tab-"+k).hidden=k!==t; dirty.all(); }
@@ -1451,6 +1669,7 @@ function renderDetail(){
     <div class="dhead"><span class="dot" style="--c:${p.col}"></span><div><h2>${esc(p.name)}</h2><p class="meta">${meta.join(" · ")}</p></div><button class="btn" id="followBtn">Segui</button></div>
     <p class="thought" data-f="thought"></p>
     <div class="doing"><span>Ora:</span> <b data-f="act"></b></div>
+    <div data-f="plan"></div>
     <div class="bars">${NEEDS.map(([k,l])=>`<span>${l}</span><span class="bar"><i data-b="${k}"></i></span><span class="num" data-n="${k}"></span>`).join("")}<span>Salute</span><span class="bar"><i data-b="salute"></i></span><span class="num" data-n="salute"></span></div>
     <div><h3>Porta con sé</h3><div class="chips" data-f="inv" style="margin-top:6px"></div></div>
     <div><h3>Sa fare</h3><div class="chips" data-f="known" style="margin-top:6px"></div></div>
@@ -1464,6 +1683,7 @@ function updateDetail(){
   const p=personById(selected); const el=$("detail"); if (!p || !p.alive) return;
   setIf(el.querySelector('[data-f="thought"]'),"t","«"+p.thought+"»");
   setIf(el.querySelector('[data-f="act"]'),"a",actText(p));
+  setIf(el.querySelector('[data-f="plan"]'),"p",planHtml(p),true);
   for (const [k] of [...NEEDS,["salute"]]){ const v=Math.round(k==="salute"?p.salute:p.needs[k]); const b=el.querySelector(`[data-b="${k}"]`); if (b){ b.style.width=v+"%"; b.style.background=barCol(v); } setIf(el.querySelector(`[data-n="${k}"]`),"n",String(v)); }
   const inv=Object.entries(p.inv).filter(([,v])=>v>0).map(([k,v])=>`<span class="chip">${v} ${ITEM[k]||k}</span>`).join("")+(p.clothes?`<span class="chip">vestiti di pelle</span>`:"");
   setIf(el.querySelector('[data-f="inv"]'),"i",inv||`<span class="chip none">mani vuote</span>`,true);
@@ -1498,7 +1718,6 @@ function renderDisc(){
     const ready=ppl.some(p=>reqsMet(p,d));
     if (d.special) return `<div class="disc ${S.words.length?"open":"lock"}"><b>${d.n}</b><span class="st">${S.words.length}/12 parole</span><p>${d.d} Nasce stando insieme: ogni chiacchierata può inventare una parola.</p></div>`;
     if (!ready){ const miss=d.req.filter(r=>!S.disc[r]).map(r=>DISCBY[r].n); return `<div class="disc lock"><b>${d.n}</b><span class="st">Bloccata</span><p>${miss.length?"Serve prima: "+miss.join(", ")+".":"Qualcuno deve prima imparare ciò che serve."}</p></div>`; }
-    const insp=inspired(d.id);
     return `<div class="disc open"><b>${d.n}</b><span class="st">Possibile</span><p>${hintFor(d)}</p></div>`;
   }).join("");
   const words=S.words.length?`<div class="words">${S.words.map(w=>`<span class="chip"><b>${esc(w.w)}</b> = ${esc(w.c)}</span>`).join("")}</div>`:`<p class="hint">Nessuna parola ancora: per ora si capiscono a gesti.</p>`;
@@ -1547,9 +1766,10 @@ $("newWorld").onclick=e=>{
   const b=e.currentTarget;
   if (!b.dataset.sure){ b.dataset.sure="1"; b.textContent="Sicuro? Tocca di nuovo"; b.classList.add("primary"); setTimeout(()=>{ delete b.dataset.sure; b.textContent="Nuovo mondo"; b.classList.remove("primary"); },4000); return; }
   delete b.dataset.sure; b.textContent="Nuovo mondo"; b.classList.remove("primary");
-  $("over").hidden=true; hideBanner(); newGame("Adamo","Eva"); saveGame(); setTab("people");
+  $("over").hidden=true; hideBanner(); newGame("Adamo","Eva"); saveGame(); setTab("people"); started=false; showStart(true);
 };
 function updateHeader(){
+  updateAiState();
   $("hDay").textContent=`Giorno ${day()}`;
   $("hSeason").textContent=`${SEASONS[season()]} · anno ${Math.floor((day()-1)/YEAR_DAYS)+1}`;
   $("hMeta").textContent=`${WEATHER[S.weather].n} · ${timeStr()} · ${Math.round(tempNow())}°C`;
@@ -1580,7 +1800,7 @@ document.addEventListener("visibilitychange",()=>{ if (document.hidden) saveGame
 let lastT=0, acc=0;
 function frame(t){
   const dt=Math.min(.25,(t-lastT)/1000||0); lastT=t;
-  if (!paused && !S.over){ acc+=dt*8*speed; let n=0; while (acc>=1 && n<400){ tick(); acc-=1; n++; if (paused) { acc=0; break; } } }
+  if (!paused && !S.over && !aiBusy && started){ acc+=dt*8*speed; let n=0; while (acc>=1 && n<400){ tick(); acc-=1; n++; if (paused || aiBusy) { acc=0; break; } } }
   else acc=0;
   directorTick(t);
   draw(t);
@@ -1594,9 +1814,10 @@ function start(data){
   if (!ok) newGame("Adamo","Eva");
   else { selected=alive()[0]?.id||null; cam.follow=selected; const p=personById(selected); if (p){ cam.x=p.x+.5; cam.y=p.y+.5; } fitZoom(); if (data && data.save){ paused=!!data.paused; speed=data.speed||1; } }
   resize(); setTab(tab);
-  if (S.over) showOver();
+  if (S.over) showOver(); else showStart(!ok);
   setInterval(updateUI,250); updateUI();
   requestAnimationFrame(frame);
+  Promise.resolve(window.claude?.use?.("sample")).then(f=>{ sampleFn=f||null; sampleChecked=true; if (!S.over && !started) showStart(!ok); }).catch(()=>{ sampleChecked=true; if (!started) showStart(!ok); });
 }
 window.addEventListener("resize",()=>resize());
 window.claude?.hot?.snapshot?.(()=>({ save:JSON.stringify(S), paused, speed }));

@@ -1,0 +1,1596 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- /wrapper -->
+<title>Terra Zero</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: la mappa viva a sinistra, il quaderno di bordo (abitanti, diario, scoperte, poteri) a destra; su telefono tutto in colonna */
+:root{
+  --bg:#0f1a17; --panel:#15231e; --panel2:#1b2c26; --line:#2a3c35;
+  --ink:#ece6d6; --muted:#9caba2; --ochre:#e3a14c; --ochre-ink:#1c1207; --water:#7cbcd0;
+  --good:#8acb70; --warn:#e8bd52; --bad:#e57862;
+  --hud-bg:rgba(9,15,13,.78); --hud-ink:#efe9da; --hud-muted:#b4bfb7;
+  --f-display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#e8ece3; --panel:#f8faf4; --panel2:#eef2e8; --line:#d2d9ca;
+    --ink:#1b2a23; --muted:#56665d; --ochre:#a35d0c; --ochre-ink:#fff8ee; --water:#2b7b95;
+    --good:#3d8a2b; --warn:#9c720a; --bad:#b63f2b; color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#e8ece3; --panel:#f8faf4; --panel2:#eef2e8; --line:#d2d9ca;
+  --ink:#1b2a23; --muted:#56665d; --ochre:#a35d0c; --ochre-ink:#fff8ee; --water:#2b7b95;
+  --good:#3d8a2b; --warn:#9c720a; --bad:#b63f2b; color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);margin:0}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ochre);outline-offset:2px}
+.app{
+  max-width:1460px;margin:0 auto;padding-block:14px 32px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:grid;grid-template-columns:minmax(0,1fr) 390px;grid-template-areas:"top top" "map side";gap:14px 18px;
+}
+.top{grid-area:top;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 24px}
+.brand h1{font:800 clamp(28px,4vw,40px)/.95 var(--f-display);letter-spacing:-.03em;margin:0}
+.brand h1 span{color:var(--ochre)}
+.brand p{margin:6px 0 0;color:var(--muted);max-width:46ch}
+.stats{display:flex;gap:8px;flex-wrap:wrap}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 12px;display:flex;flex-direction:column;min-width:86px}
+.stat b{font:800 19px/1.1 var(--f-display);font-variant-numeric:tabular-nums}
+.stat small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+
+.mapcol{grid-area:map;min-width:0;display:flex;flex-direction:column;gap:10px}
+.stage{position:relative;height:min(74vh,780px);min-height:340px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#0b1210;touch-action:none;user-select:none;-webkit-user-select:none}
+#cv{display:block;width:100%;height:100%;cursor:grab}
+#cv.picking{cursor:crosshair}
+.hud{position:absolute;left:10px;top:10px;background:var(--hud-bg);color:var(--hud-ink);border-radius:10px;padding:7px 12px;display:flex;gap:12px;align-items:center;pointer-events:none;backdrop-filter:blur(4px)}
+.hud .d{font:800 20px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.hud .s{display:flex;flex-direction:column;font-size:12px;line-height:1.3;color:var(--hud-muted)}
+.hud .s b{color:var(--hud-ink);font-weight:700}
+.mapbtns{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}
+.mapbtns button{width:38px;height:38px;border-radius:10px;border:0;background:var(--hud-bg);color:var(--hud-ink);font-size:18px;cursor:pointer}
+.mapbtns button:hover{background:rgba(9,15,13,.92)}
+.toasts{position:absolute;left:10px;bottom:10px;right:60px;display:flex;flex-direction:column;gap:6px;align-items:flex-start;pointer-events:none}
+.toast{background:var(--hud-bg);color:var(--hud-ink);border-left:3px solid #e3a14c;border-radius:8px;padding:6px 10px;font-size:13px;max-width:440px;animation:tin .35s ease-out}
+.toast.disc{border-left-color:#f3d36b;font-weight:700}
+.toast.bad{border-left-color:#e57862}
+@keyframes tin{from{transform:translateY(8px);opacity:.2}to{transform:none;opacity:1}}
+.banner{position:absolute;left:50%;top:58px;transform:translateX(-50%);background:#e3a14c;color:#1c1207;border-radius:10px;padding:8px 14px;font-weight:700;font-size:14px;max-width:calc(100% - 24px);text-align:center;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
+.banner button{border:0;background:#1c1207;color:#f6e7cf;border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:700}
+.tileinfo{position:absolute;right:58px;top:10px;background:var(--hud-bg);color:var(--hud-ink);border-radius:10px;padding:8px 12px;font-size:13px;max-width:240px}
+.tileinfo b{display:block;font-family:var(--f-display);font-size:15px}
+.tileinfo ul{margin:4px 0 0;padding-left:16px;color:var(--hud-muted)}
+.over{position:absolute;inset:0;background:rgba(8,12,11,.82);color:#efe9da;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}
+.over h2{font:800 30px/1.1 var(--f-display);margin:0}
+
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 14px;cursor:pointer;font-weight:700}
+.btn:hover{background:var(--panel2)}
+.btn.primary{background:var(--ochre);color:var(--ochre-ink);border-color:transparent}
+.btn.primary:hover{filter:brightness(1.07)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:var(--panel);padding:8px 12px;cursor:pointer;font-weight:700;font-variant-numeric:tabular-nums}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.tog{display:inline-flex;gap:6px;align-items:center;color:var(--muted);font-size:14px;cursor:pointer}
+.tog input{accent-color:var(--ochre);width:16px;height:16px}
+.daybar{flex:1 1 140px;min-width:120px;height:8px;border-radius:99px;background:var(--panel2);overflow:hidden;position:relative}
+.daybar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#e8bd52,#e3a14c 55%,#4a5b8a 60%,#2a3560);width:100%;opacity:.25}
+.daybar b{position:absolute;top:0;bottom:0;width:3px;background:var(--ink);border-radius:2px}
+
+.side{grid-area:side;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;max-height:calc(min(74vh,780px) + 60px);overflow:hidden}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;padding:12px 4px;cursor:pointer;font-weight:700;color:var(--muted);border-bottom:2px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ochre)}
+.pane{overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.pane h3{margin:6px 0 0;font:700 12px/1.2 var(--f-body);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.hint{color:var(--muted);font-size:13px;margin:0}
+
+.plist{display:flex;flex-direction:column;gap:6px}
+.pcard{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:2px 10px;align-items:center;text-align:left;width:100%;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:8px 10px;cursor:pointer}
+.pcard[aria-current="true"]{border-color:var(--ochre)}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px rgba(0,0,0,.25) inset}
+.pname{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pname small{font-weight:400;color:var(--muted)}
+.pact{grid-column:2/4;color:var(--muted);font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.minibars{display:flex;gap:3px}
+.minibars i{width:6px;height:18px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.minibars i::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--v);background:var(--bc)}
+
+.detail{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--panel2)}
+.dhead{display:flex;gap:10px;align-items:center}
+.dhead .dot{width:22px;height:22px;flex:none}
+.dhead h2{margin:0;font:800 22px/1 var(--f-display)}
+.dhead .meta{margin:2px 0 0;color:var(--muted);font-size:13px}
+.dhead .btn{margin-left:auto;padding:6px 10px;font-size:13px}
+.thought{margin:0;font-style:italic;background:var(--panel);border-radius:10px;padding:8px 10px;border:1px solid var(--line)}
+.doing{font-size:14px}
+.doing span{color:var(--muted)}
+.bars{display:grid;grid-template-columns:auto minmax(0,1fr) 34px;gap:5px 8px;align-items:center;font-size:13px}
+.bars .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.bars .bar i{display:block;height:100%;border-radius:99px;background:var(--good);transition:width .3s}
+.bars .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.ogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px}
+.ogrid button{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:7px 8px;cursor:pointer;text-align:left;font-size:13px;font-weight:700}
+.ogrid button:hover{border-color:var(--muted)}
+.ogrid button[aria-pressed="true"]{background:var(--ochre);color:var(--ochre-ink);border-color:transparent}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{border:1px solid var(--line);border-radius:99px;padding:2px 9px;font-size:12.5px;background:var(--panel)}
+.chip.k{border-color:transparent;background:color-mix(in srgb,var(--ochre) 22%,var(--panel))}
+.chip.none{color:var(--muted);font-style:italic;border-style:dashed}
+.traits{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:13px;align-items:center}
+.traits .bar{height:5px;border-radius:99px;background:var(--line);overflow:hidden}
+.traits .bar i{display:block;height:100%;background:var(--water)}
+
+.entry{border-left:2px solid var(--line);padding:2px 0 2px 12px}
+.entry h4{margin:0 0 4px;font:800 16px/1.2 var(--f-display)}
+.entry h4 small{font:400 13px var(--f-body);color:var(--muted);margin-left:6px}
+.entry.today{border-left-color:var(--ochre)}
+.entry ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:14px}
+.entry li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px}
+.entry li time{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12.5px;padding-top:1px}
+.entry li.ev-imp span{font-weight:700}
+.entry li.ev-bad span{color:var(--bad)}
+.entry li.ev-disc span{font-weight:700;color:var(--ochre)}
+.entry .notes{margin:6px 0 0;font-size:13.5px;font-style:italic;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.entry .sum{font-size:12.5px;color:var(--muted);margin:4px 0 0}
+
+.dl{display:flex;flex-direction:column;gap:8px}
+.disc{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:start;background:var(--panel2)}
+.disc b{font-family:var(--f-display);font-size:15.5px}
+.disc p{grid-column:1/-1;margin:0;font-size:13px;color:var(--muted)}
+.disc .st{font-size:12px;font-weight:700;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.disc.done{border-color:color-mix(in srgb,var(--ochre) 45%,var(--line))}
+.disc.done .st{background:var(--ochre);color:var(--ochre-ink)}
+.disc.open .st{background:var(--panel);border:1px solid var(--line)}
+.disc.lock{opacity:.62}
+.disc.lock .st{color:var(--muted)}
+.disc .act{grid-column:1/-1;display:flex;gap:8px;align-items:center;margin-top:4px}
+.disc .act button{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12.5px;font-weight:700}
+.disc .act button[disabled]{opacity:.5;cursor:default}
+.words{display:flex;flex-wrap:wrap;gap:5px}
+.words .chip b{font-family:var(--f-display);color:var(--ochre)}
+
+.powers{display:flex;flex-direction:column;gap:8px}
+.power{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2)}
+.power b{font-family:var(--f-display);font-size:15.5px}
+.power p{margin:0;font-size:13px;color:var(--muted)}
+.power button{grid-row:1/3;grid-column:2}
+.power button[disabled]{opacity:.5;cursor:default}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.field input{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "map" "side"}
+  .stage{height:58vh;min-height:300px}
+  .side{max-height:none}
+  .pane{overflow:visible}
+}
+@media (max-width:480px){
+  .stat{min-width:0;flex:1 1 70px;padding:5px 8px}
+  .hud{padding:6px 9px;gap:9px}
+  .hud .d{font-size:17px}
+  .controls .tog{flex-basis:100%}
+}
+@media (prefers-reduced-motion:reduce){ .toast{animation:none} .bars .bar i{transition:none} }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Terra <span>Zero</span></h1>
+      <p>Due persone, nessuno strumento, un mondo intero da scoprire. Tu guardi, consigli e decidi giorno dopo giorno.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><small>Abitanti</small><b id="sPop">2</b></div>
+      <div class="stat"><small>Scoperte</small><b id="sDisc">0</b></div>
+      <div class="stat"><small>Parole</small><b id="sWords">0</b></div>
+      <div class="stat"><small>Esplorato</small><b id="sSeen">0%</b></div>
+    </div>
+  </header>
+
+  <main class="mapcol">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="Mappa del mondo"></canvas>
+      <div class="hud"><span class="d" id="hDay">Giorno 1</span><span class="s"><b id="hSeason">Primavera</b><span id="hMeta">Sereno · 06:00</span></span></div>
+      <div class="mapbtns">
+        <button id="zin" title="Avvicina" aria-label="Avvicina">+</button>
+        <button id="zout" title="Allontana" aria-label="Allontana">−</button>
+        <button id="center" title="Centra sulla persona selezionata" aria-label="Centra">◎</button>
+      </div>
+      <div class="tileinfo" id="tileinfo" hidden></div>
+      <div class="banner" id="banner" hidden></div>
+      <div class="toasts" id="toasts"></div>
+      <div class="over" id="over" hidden></div>
+    </div>
+    <div class="controls">
+      <button class="btn primary" id="play">Pausa</button>
+      <div class="seg" id="speeds" role="group" aria-label="Velocità">
+        <button data-sp="1" aria-pressed="true">1×</button><button data-sp="3" aria-pressed="false">3×</button><button data-sp="10" aria-pressed="false">10×</button><button data-sp="30" aria-pressed="false">30×</button>
+      </div>
+      <button class="btn" id="nextDay">Avanza di un giorno</button>
+      <label class="tog"><input type="checkbox" id="pauseDawn" checked> Fermati a ogni alba</label>
+      <div class="daybar" title="Ora del giorno"><i></i><b id="dayMark"></b></div>
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="people" aria-selected="true">Abitanti</button>
+      <button role="tab" data-tab="diary" aria-selected="false">Diario</button>
+      <button role="tab" data-tab="disc" aria-selected="false">Scoperte</button>
+      <button role="tab" data-tab="powers" aria-selected="false">Poteri</button>
+    </div>
+    <div class="pane" id="tab-people"><div id="detail"></div><h3>Tutti gli abitanti</h3><div class="plist" id="plist"></div></div>
+    <div class="pane" id="tab-diary" hidden></div>
+    <div class="pane" id="tab-disc" hidden></div>
+    <div class="pane" id="tab-powers" hidden></div>
+  </aside>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+// ================= costanti =================
+const W = 72, H = 48, DAY = 240, TPH = 10, NIGHT = 140, EVENING = 110;
+const SEASON_DAYS = 30, YEAR_DAYS = 120, MAX_POP = 24, ADULT = 360;
+const T = { DEEP:0, SHALLOW:1, SAND:2, GRASS:3, FOREST:4, HILL:5, MOUNT:6 };
+const TNAME = ["Mare profondo","Acqua bassa","Spiaggia","Prateria","Bosco","Colline","Montagna"];
+const SEASONS = ["Primavera","Estate","Autunno","Inverno"];
+const SEASON_T = [15, 25, 12, 2];
+const WEATHER = {
+  sereno:{n:"Sereno"}, nuvoloso:{n:"Nuvoloso"}, pioggia:{n:"Pioggia"}, temporale:{n:"Temporale"}, neve:{n:"Neve"}
+};
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+const PCOL = ["#5aa9e6","#f08a5d","#b993f0","#7bd389","#f2c14e","#ec6f9f","#4ecdc4","#ff9f68","#a3d977","#f7768e","#8fb8ff","#e0c36a"];
+const NAMES_M = ["Leo","Tito","Ivo","Nilo","Ugo","Elio","Remo","Dario","Ettore","Aldo","Bruno","Ciro","Furio","Gaio","Lino","Oreste","Pio","Saro"];
+const NAMES_F = ["Mia","Lia","Nora","Alba","Iris","Gaia","Vera","Ada","Bice","Clea","Dora","Elsa","Fiora","Livia","Olga","Rea","Tea","Zoe"];
+
+const FOOD = { bacche:8, frutta:14, castagne:12, funghi:10, radici:10, farro:11, carne:22, pesce:16, latte:14 };
+const COOKED = { carne:38, pesce:30, farro:32 };
+const ITEM = { bacche:"bacche", frutta:"mele", castagne:"castagne", funghi:"funghi", radici:"radici", farro:"farro", carne:"carne", pesce:"pesce", latte:"latte",
+  legna:"legna", pietre:"pietre", selce:"selce", fibre:"fibre", pelli:"pelli", argilla:"argilla", semi:"semi" };
+
+const AK = {
+  coniglio:{n:"Coniglio", b:[T.GRASS,T.FOREST,T.SAND], sp:.30, meat:1, skin:0, fear:4, cap:24, col:"#cfa77b", r:.17, init:16},
+  cervo:{n:"Cervo", b:[T.GRASS,T.FOREST], sp:.28, meat:3, skin:1, fear:6, cap:12, col:"#9a6438", r:.30, init:9},
+  cinghiale:{n:"Cinghiale", b:[T.FOREST,T.GRASS], sp:.22, meat:3, skin:1, fear:3, cap:7, col:"#4a3a2f", r:.27, init:5},
+  capra:{n:"Capra", b:[T.HILL,T.GRASS], sp:.20, meat:2, skin:1, fear:4, cap:10, col:"#ebe6da", r:.23, init:7},
+  lupo:{n:"Lupo", b:[T.FOREST,T.HILL,T.GRASS], sp:.33, meat:2, skin:1, fear:3, cap:4, col:"#8d939a", r:.26, init:3},
+  cane:{n:"Cane", b:null, sp:.36, meat:0, skin:0, fear:0, cap:99, col:"#b89060", r:.22, init:0}
+};
+
+const DISC = [
+  {id:"selce", n:"Pietra scheggiata", d:"Battendo due pietre ottengono una lama tagliente.", req:[], on:["pietre","sperimenta"], exp:{pietre:2}, p:.25},
+  {id:"bastone", n:"Bastone da scavo", d:"Un ramo appuntito per scavare radici anche d'inverno.", req:[], on:["legna","sperimenta"], exp:{legna:2}, p:.15},
+  {id:"fibre", n:"Corde di fibre", d:"Intrecciano erba e canne in cordicelle robuste.", req:[], on:["raccogli","sperimenta"], exp:{raccolta:10}, p:.08},
+  {id:"fuoco", n:"Fuoco", d:"Scintille di selce su erba secca: calore, luce e niente più lupi.", req:["selce"], on:["pietre","sperimenta"], exp:{pietre:5}, p:.06},
+  {id:"lancia", n:"Lancia", d:"Una punta di selce legata a un bastone: ora possono cacciare.", req:["selce","bastone"], on:["sperimenta","legna"], exp:{legna:6, pietre:6}, p:.05},
+  {id:"cesto", n:"Cesto intrecciato", d:"Portano il triplo delle cose e fanno scorte a casa.", req:["fibre"], on:["sperimenta","raccogli"], exp:{raccolta:45}, p:.03},
+  {id:"capanna", n:"Capanna di rami", d:"Rami e fibre diventano un riparo da vento e pioggia.", req:["bastone","fibre"], on:["sperimenta","legna"], exp:{legna:12}, p:.04},
+  {id:"cottura", n:"Cucinare", d:"Carne e pesce cotti sul fuoco nutrono quasi il doppio.", req:["fuoco"], on:["mangiare"], exp:{}, p:.40, cond:(a,c)=>c.fire},
+  {id:"pesca", n:"Pesca", d:"Con la lancia infilzano i pesci nell'acqua bassa.", req:["lancia"], on:["pesca","sperimenta"], exp:{pesca:1}, p:.25},
+  {id:"vestiti", n:"Vestiti di pelle", d:"Pelli raschiate con la selce: il freddo fa meno paura.", req:["selce"], on:["sperimenta","caccia"], exp:{}, p:.05, mat:a=>(a.inv.pelli||0)>=1},
+  {id:"vasi", n:"Vasi di argilla", d:"Argilla cotta nel fuoco: l'acqua dura di più e le scorte non marciscono.", req:["fuoco"], on:["sperimenta","accendi"], exp:{argilla:5}, p:.04},
+  {id:"agricoltura", n:"Agricoltura", d:"Hanno notato che i semi caduti germogliano: ora seminano il farro.", req:["bastone"], on:["raccogli","mangiare","sperimenta"], exp:{frutta:120, raccolta:150}, p:.01},
+  {id:"arco", n:"Arco e frecce", d:"Colpiscono da lontano: la caccia diventa più sicura.", req:["lancia","fibre"], on:["caccia","sperimenta"], exp:{caccia:15}, p:.03},
+  {id:"medicina", n:"Erbe medicinali", d:"Riconoscono le erbe che curano: guariscono più in fretta e non si ammalano col cibo crudo.", req:[], on:["raccogli"], exp:{raccolta:120}, p:.01},
+  {id:"addomesticamento", n:"Addomesticamento", d:"Gli avanzi attirano capre e lupi, che restano con loro.", req:["lancia","fuoco"], on:["caccia","sperimenta"], exp:{caccia:10}, p:.03},
+  {id:"linguaggio", n:"Linguaggio", d:"I suoni diventano parole: insegnare e capirsi è molto più facile.", req:[], on:[], exp:{}, p:0, special:true},
+  {id:"musica", n:"Musica", d:"Ritmo su un tronco cavo e canti attorno al fuoco.", req:["linguaggio","fuoco"], on:["compagnia","accendi"], exp:{}, p:.10},
+  {id:"pittura", n:"Pittura rupestre", d:"Carbone e ocra: raccontano le loro giornate sulle pareti.", req:["linguaggio","fuoco"], on:["compagnia","sperimenta"], exp:{}, p:.06},
+  {id:"casa", n:"Casa di pietra e fango", d:"Muri spessi che tengono caldo anche nel cuore dell'inverno.", req:["capanna","vasi"], on:["sperimenta","costruisci"], exp:{legna:30}, p:.03},
+  {id:"pane", n:"Pane", d:"Farro schiacciato tra due pietre e cotto sulla brace.", req:["agricoltura","cottura"], on:["mangiare","sperimenta"], exp:{farro:8}, p:.06}
+];
+const DISCBY = Object.fromEntries(DISC.map(d => [d.id, d]));
+
+const CONCEPTS = ["acqua","cibo","fuoco","sole","albero","pietra","notte","freddo","io","tu","sì","no","casa","lupo","pesce","cervo","andare","mangiare","dormire","bello","paura","amore","bambino","luna","pioggia","grande","piccolo","felice","insieme","domani","fiume","montagna","fiore","stella","caldo","cantare"];
+const SYL = ["ka","mu","ta","ri","no","sa","ul","ba","go","ne","ki","lo","ma","tu","ra","ish","om","pe","da","yu","an","zo","he","li","um","ta","ko","ey"];
+
+const ORDERS = [
+  {k:"cibo", n:"Cerca cibo", tasks:["raccogli","caccia","pesca","mangiare"]},
+  {k:"legna", n:"Raccogli legna", tasks:["legna"]},
+  {k:"pietre", n:"Cerca pietre", tasks:["pietre"]},
+  {k:"esplora", n:"Esplora", tasks:["esplora"]},
+  {k:"costruisci", n:"Costruisci", tasks:["costruisci","sperimenta"]},
+  {k:"fuoco", n:"Accendi il fuoco", tasks:["accendi","legna","sperimenta"]},
+  {k:"inventa", n:"Sperimenta", tasks:["sperimenta"]},
+  {k:"compagnia", n:"Stai in compagnia", tasks:["compagnia"]},
+  {k:"riposa", n:"Riposa", tasks:["riposa","dormire"]},
+  {k:"vai", n:"Vai qui…", tasks:["vai"]}
+];
+const ORDER_VERB = {cibo:"cercare cibo", legna:"raccogliere legna", pietre:"cercare pietre", esplora:"esplorare", costruisci:"costruire un riparo", fuoco:"accendere un fuoco", inventa:"sperimentare", compagnia:"stare in compagnia", riposa:"riposare", vai:"andare dove hai indicato"};
+
+const ACT = {
+  bere:["Va a bere","Beve"], mangiare:["Va a mangiare","Mangia"], raccogli:["Cerca cibo","Raccoglie cibo"], legna:["Cerca legna","Raccoglie rami"],
+  pietre:["Cerca pietre","Raccoglie pietre"], fibre:["Cerca fibre","Intreccia erba e canne"], esplora:["Esplora","Si guarda intorno"],
+  dormire:["Va a dormire","Dorme"], riposa:["Si riposa","Si riposa"], scaldarsi:["Cerca un posto caldo","Si scalda"],
+  accendi:["Va ad accendere il fuoco","Accende il fuoco"], costruisci:["Va al cantiere","Costruisce"], caccia:["Insegue una preda","Attacca la preda"],
+  pesca:["Va a pescare","Pesca"], compagnia:["Raggiunge {p}","Sta con {p}"], ascolta:["Chiacchiera","Chiacchiera"], pianta:["Va al campo","Semina"],
+  addomestica:["Si avvicina a un animale","Prova ad addomesticarlo"], dipingi:["Va alla parete","Dipinge"], sperimenta:["Sperimenta","Sperimenta"],
+  cuci:["Cuce","Cuce vestiti di pelle"], deposita:["Porta il cibo a casa","Mette via le scorte"], vaga:["Passeggia","Passeggia"],
+  vai:["Va dove hai indicato","È arrivato"], segui:["Segue un genitore","Sta vicino a un genitore"]
+};
+const ICON = { bere:"💧", mangiare:"🍖", raccogli:"🫐", legna:"🪵", pietre:"🪨", fibre:"🌾", esplora:"🧭", dormire:"💤", riposa:"😌", scaldarsi:"🥶",
+  accendi:"🔥", costruisci:"🛖", caccia:"🏹", pesca:"🐟", compagnia:"💬", ascolta:"💬", pianta:"🌱", addomestica:"🐐", dipingi:"🎨",
+  sperimenta:"💡", cuci:"🧵", deposita:"🧺", vaga:"", vai:"📍", segui:"👣" };
+const THOUGHTS = {
+  bere:["Ho la gola secca, cerco acqua.","L'acqua laggiù sembra fresca.","Devo bere qualcosa."],
+  mangiare:["Finalmente si mangia!","Mi brontola la pancia.","Un boccone e torno a fare."],
+  raccogli:["Quei cespugli sembrano carichi.","Cerco qualcosa da mettere sotto i denti.","Chissà se quei frutti sono maturi."],
+  legna:["Servono rami, tanti rami.","Questo legno è asciutto, va bene."],
+  pietre:["Questa pietra ha una forma strana…","Qualche sasso potrebbe servire.","Se le batto tra loro cosa succede?"],
+  fibre:["Queste canne si piegano senza rompersi."],
+  esplora:["Cosa c'è oltre quella collina?","Voglio vedere dove finisce il bosco.","Ogni passo è una scoperta."],
+  dormire:["Che stanchezza… dormo un po'.","Le stelle sono bellissime stanotte.","Domani sarà un altro giorno."],
+  riposa:["Mi siedo un momento all'ombra."],
+  scaldarsi:["Brr, che freddo!","Mi serve un posto caldo, subito."],
+  accendi:["Facciamo un bel fuoco.","Il fuoco tiene lontani i lupi."],
+  costruisci:["Un riparo tutto nostro!","Un ramo qui, uno lì…"],
+  caccia:["Silenzio… non deve sentirmi.","Stasera si mangia carne!"],
+  pesca:["Vedo un pesce argentato!","Resto immobile… ora!"],
+  compagnia:["Vado a cercare {p}.","Mi manca {p}.","Voglio stare un po' con {p}."],
+  ascolta:["Che bello parlare un po'."],
+  pianta:["Se metto qui il seme, crescerà?","Il campo vicino casa promette bene."],
+  addomestica:["Vieni qui, piccola, non ti faccio male."],
+  dipingi:["Voglio raccontare la caccia sulla parete."],
+  sperimenta:["E se provassi a…?","Ho un'idea!","Proviamo a combinare queste cose."],
+  cuci:["Questa pelle mi terrà al caldo."],
+  deposita:["Metto da parte il cibo per i giorni difficili."],
+  vaga:["Che bella giornata.","Il vento profuma di fiori.","Mi guardo intorno."],
+  vai:["Vado dove mi sento chiamato."],
+  segui:["Aspettami!","Dove vai? Vengo anch'io!"]
+};
+
+// ================= utilità =================
+const rand = (a=0,b=1) => a + Math.random()*(b-a);
+const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const inb = (x,y) => x>=0 && y>=0 && x<W && y<H;
+const idx = (x,y) => y*W+x;
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function hash2(x,y,s){ let h=(Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(s,1442695041))|0; h=Math.imul(h^(h>>>13),1274126177); h^=h>>>16; return (h>>>0)/4294967296; }
+function vnoise(x,y,s){ const xi=Math.floor(x), yi=Math.floor(y), xf=x-xi, yf=y-yi; const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+  const a=hash2(xi,yi,s), b=hash2(xi+1,yi,s), c=hash2(xi,yi+1,s), d=hash2(xi+1,yi+1,s); return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v; }
+function fbm(x,y,s){ let t=0,amp=1,f=1,n=0; for(let o=0;o<4;o++){ t+=vnoise(x*f,y*f,s+o*17)*amp; n+=amp; amp*=.5; f*=2; } return t/n; }
+
+let S = null;           // stato del mondo (salvabile)
+let WD = null;          // distanza dall'acqua (statica)
+let paused = false, speed = 1, runToDawn = false;
+let selected = null, pendingGo = null;
+const cam = { x: W/2, y: H/2, z: 22, follow: null };
+
+const day = () => Math.floor(S.tick/DAY)+1;
+const tod = () => S.tick % DAY;
+const hour = () => (6 + tod()/TPH) % 24;
+const season = (d=day()) => Math.floor(((d-1) % YEAR_DAYS)/SEASON_DAYS);
+const isNight = () => tod() >= NIGHT;
+const isEvening = () => tod() >= EVENING;
+const tileAt = (x,y) => S.tiles[y*W+x];
+const tx = a => Math.round(a.x), ty = a => Math.round(a.y);
+const timeStr = () => { const t=tod(); const h=Math.floor(6+t/TPH)%24, m=(t%TPH)*6; return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"); };
+const has = (a,id) => a.known.includes(id);
+const reqsMet = (a,d) => d.req.every(r => has(a,r));
+const isChild = a => a.born>0 && a.age<ADULT;
+const alive = () => S.people.filter(p => p.alive);
+const personById = id => S.people.find(p => p.id===id) || null;
+const animalById = id => S.animals.find(p => p.id===id) || null;
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+const sexW = (a,m,f) => a.sex==="M" ? m : f;
+
+function passableT(t){ return t.t!==T.DEEP && (t.t!==T.MOUNT || t.struct==="grotta") && !(t.burn>0); }
+function isWater(t){ return t.t===T.DEEP || t.t===T.SHALLOW; }
+function nearWater(x,y){ const t=tileAt(x,y); if (t.t===T.SHALLOW) return true; for (const [dx,dy] of DIRS){ const nx=x+dx, ny=y+dy; if (inb(nx,ny) && isWater(tileAt(nx,ny))) return true; } return false; }
+function shelterT(t){ return t && (t.struct==="capanna" || t.struct==="casa" || t.struct==="grotta"); }
+
+// ================= generazione del mondo =================
+function computeWD(tiles){
+  const N=W*H, d=new Int16Array(N).fill(999), q=new Int32Array(N); let h=0, e=0;
+  for (let i=0;i<N;i++) if (isWater(tiles[i])) { d[i]=0; q[e++]=i; }
+  while (h<e){ const c=q[h++], cx=c%W, cy=(c/W)|0; for (const [dx,dy] of DIRS){ const nx=cx+dx, ny=cy+dy; if(!inb(nx,ny)) continue; const n=ny*W+nx; if (d[n]>d[c]+1){ d[n]=d[c]+1; q[e++]=n; } } }
+  return d;
+}
+function regionSize(tiles,s){
+  const seen=new Uint8Array(W*H), q=[s]; seen[s]=1; let n=0;
+  while(q.length){ const c=q.pop(); n++; const cx=c%W, cy=(c/W)|0; for (const [dx,dy] of DIRS){ const nx=cx+dx, ny=cy+dy; if(!inb(nx,ny)) continue; const i=ny*W+nx; if(seen[i]||!passableT(tiles[i])) continue; seen[i]=1; q.push(i); } }
+  return n;
+}
+function genWorld(seed){
+  for (let att=0; att<30; att++){
+    const s=(seed + att*7919) >>> 0, rnd=mulberry32(s), N=W*H;
+    const e=new Float32Array(N), m=new Float32Array(N);
+    for (let y=0;y<H;y++) for (let x=0;x<W;x++){
+      const nx=(x-W/2)/(W/2), ny=(y-H/2)/(H/2), d=Math.sqrt(nx*nx+ny*ny), i=y*W+x;
+      e[i] = fbm(x/12,y/12,s) + 0.12*fbm(x/4,y/4,s+3) - Math.pow(d,2.2)*0.55;
+      m[i] = fbm(x/9,y/9,s+101);
+    }
+    const sorted=Array.from(e).sort((a,b)=>a-b), q=p=>sorted[Math.floor(p*(N-1))];
+    const qDeep=q(.30), qSh=q(.345), qSand=q(.395), qHill=q(.86), qMount=q(.935);
+    const tt=new Uint8Array(N);
+    for (let i=0;i<N;i++) tt[i] = e[i]<qDeep?T.DEEP : e[i]<qSh?T.SHALLOW : e[i]<qSand?T.SAND : e[i]>=qMount?T.MOUNT : e[i]>=qHill?T.HILL : 9;
+    const lm=[]; for (let i=0;i<N;i++) if (tt[i]===9) lm.push(m[i]); lm.sort((a,b)=>a-b);
+    const qF=lm[Math.floor(lm.length*.56)];
+    for (let i=0;i<N;i++) if (tt[i]===9) tt[i] = m[i]>qF ? T.FOREST : T.GRASS;
+    // fiumi
+    const tops=[]; for (let i=0;i<N;i++) if (tt[i]===T.MOUNT || tt[i]===T.HILL) tops.push(i);
+    const nR=2+Math.floor(rnd()*2);
+    for (let r=0; r<nR && tops.length; r++){
+      let c=tops[Math.floor(rnd()*tops.length)]; const vis=new Set();
+      for (let step=0; step<180; step++){
+        if (tt[c]===T.DEEP || (tt[c]===T.SHALLOW && step>3 && !vis.has(c))) break;
+        if (step>1) tt[c]=T.SHALLOW;
+        vis.add(c);
+        const cx=c%W, cy=(c/W)|0; let best=-1, be=1e9;
+        for (const [dx,dy] of DIRS.slice(0,4)){ const nx=cx+dx, ny=cy+dy; if(!inb(nx,ny)) continue; const n=ny*W+nx; if (vis.has(n)) continue; const v=e[n]+rnd()*0.012; if (v<be){ be=v; best=n; } }
+        if (best<0) break;
+        if (e[best] > e[c]+0.015){ for (const [dx,dy] of DIRS){ const nx=cx+dx, ny=cy+dy; if (inb(nx,ny) && tt[ny*W+nx]!==T.MOUNT) tt[ny*W+nx]=T.SHALLOW; } break; }
+        c=best;
+      }
+    }
+    // tessere e risorse
+    const tiles=new Array(N);
+    for (let i=0;i<N;i++){
+      const t={ t:tt[i], sh:Math.round(rnd()*100)/100, seen:false }; const r=rnd();
+      switch (t.t){
+        case T.FOREST:
+          if (r<.60){ const k=rnd(); t.tree = k<.15?2 : k<.32?3 : 1; if (t.tree===2) t.fruit=Math.floor(rnd()*3); }
+          else if (r<.76){ t.bush=1; t.berries=2+Math.floor(rnd()*3); }
+          else if (r<.80) t.mush=1+Math.floor(rnd()*2);
+          else if (r<.83) t.stone=2;
+          break;
+        case T.GRASS:
+          if (r<.05){ t.tree = rnd()<.4?2:1; if (t.tree===2) t.fruit=Math.floor(rnd()*3); }
+          else if (r<.11){ t.bush=1; t.berries=2+Math.floor(rnd()*3); }
+          else if (r<.19){ t.wild=1; }
+          else if (r<.225) t.stone=2+Math.floor(rnd()*2);
+          if (rnd()<.25) t.roots=1+Math.floor(rnd()*2);
+          break;
+        case T.SAND: if (r<.07) t.stone=2; break;
+        case T.HILL:
+          if (r<.36) t.stone=3+Math.floor(rnd()*3);
+          if (rnd()<.17) t.flint=1+Math.floor(rnd()*2);
+          if (rnd()<.06){ t.bush=1; t.berries=2; }
+          if (rnd()<.08) t.tree=1;
+          break;
+        case T.SHALLOW: t.fish = rnd()<.55 ? 1+Math.floor(rnd()*4) : 0; break;
+      }
+      tiles[i]=t;
+    }
+    for (let y=0;y<H;y++) for (let x=0;x<W;x++){
+      const t=tiles[y*W+x]; let wn=0, ln=0;
+      for (const [dx,dy] of DIRS){ const nx=x+dx, ny=y+dy; if(!inb(nx,ny)) continue; const n=tiles[ny*W+nx]; if (isWater(n)) wn++; else ln++; }
+      if (t.t===T.SHALLOW && ln>0 && rnd()<.32) t.reeds=2;
+      if ((t.t===T.SAND || t.t===T.GRASS) && wn>0 && rnd()<.14) t.clay=1;
+      if (t.t===T.MOUNT){ let ok=false; for (const [dx,dy] of DIRS.slice(0,4)){ const nx=x+dx, ny=y+dy; if (inb(nx,ny)){ const n=tiles[ny*W+nx]; if (n.t>=T.SAND && n.t<=T.HILL) ok=true; } } if (ok && rnd()<.14) t.struct="grotta"; }
+    }
+    const land=tiles.filter(t=>passableT(t)).length; if (land < N*.4) continue;
+    const wd=computeWD(tiles);
+    const cand=[]; for (let i=0;i<N;i++) if (tiles[i].t===T.GRASS && wd[i]>=2 && wd[i]<=5) cand.push(i);
+    cand.sort((a,b)=>Math.hypot(a%W-W/2,(a/W|0)-H/2)-Math.hypot(b%W-W/2,(b/W|0)-H/2));
+    let start=-1; for (const c of cand.slice(0,250)) if (regionSize(tiles,c)>=700){ start=c; break; }
+    if (start<0) continue;
+    const sx=start%W, sy=(start/W)|0;
+    // garantisce pietre e selce raggiungibili vicino al punto di partenza
+    let near=[]; for (let y=Math.max(0,sy-14); y<Math.min(H,sy+15); y++) for (let x=Math.max(0,sx-14); x<Math.min(W,sx+15); x++){ const t=tiles[y*W+x]; if (passableT(t) && Math.hypot(x-sx,y-sy)>=3) near.push(t); }
+    if (!near.some(t=>t.flint>0)){ const c=near.filter(t=>t.stone>0); const t=c.length?c[Math.floor(rnd()*c.length)]:near[Math.floor(rnd()*near.length)]; t.flint=2; t.stone=Math.max(t.stone||0,2); }
+    if (near.filter(t=>t.stone>0).length<3) for (let k=0;k<3;k++){ const t=near[Math.floor(rnd()*near.length)]; if (!isWater(t)) t.stone=3; }
+    return { tiles, start:{x:sx,y:sy}, seed:s };
+  }
+  throw new Error("Impossibile generare un mondo valido");
+}
+
+function spawnAnimal(kind, x, y){
+  const a={ id:S.nextId++, k:kind, x, y, tx:x, ty:y, flee:0, tame:false, owner:0, cd:0 };
+  S.animals.push(a); return a;
+}
+function randomTileFor(kind, minDist){
+  const def=AK[kind]; const hs=alive();
+  for (let n=0;n<400;n++){
+    const x=Math.floor(Math.random()*W), y=Math.floor(Math.random()*H), t=tileAt(x,y);
+    if (!passableT(t) || t.t===T.SHALLOW || t.t===T.MOUNT || !def.b.includes(t.t)) continue;
+    if (minDist && hs.some(p=>Math.hypot(p.x-x,p.y-y)<minDist)) continue;
+    if (minDist && Math.hypot(S.start.x-x,S.start.y-y)<minDist) continue;
+    return {x,y};
+  }
+  return null;
+}
+
+// ================= persone =================
+function newPerson(name, sex, x, y, o={}){
+  const p = { id:S.nextId++, name, sex, x, y, age:o.age ?? 20*YEAR_DAYS, born:o.born ?? 0, mother:o.mother||0, father:o.father||0, partner:0,
+    needs:{ cibo:o.child?70:85, acqua:85, energia:90, calore:85, umore:65 }, salute:100,
+    inv:{}, known:o.known ? [...o.known] : [], exp:{},
+    traits:{ cur:rand(.3,1), cor:rand(.3,1), soc:rand(.3,1), lab:rand(.3,1) },
+    rel:{}, home:o.home ? {...o.home} : null, task:null, path:[], order:null,
+    preg:0, lastBirth:-99, clothes:false, col:PCOL[S.colorIdx++ % PCOL.length], thought:"…", alive:true, lastPaint:-9,
+    sleptNear:false, learned:[] };
+  S.people.push(p); return p;
+}
+function newGame(n1, n2, seed){
+  const opts = S ? S.opts : { pauseDawn:true, reveal:false };
+  seed = seed ?? Math.floor(Math.random()*1e9);
+  const g = genWorld(seed);
+  S = { v:1, seed:g.seed, tick:0, tiles:g.tiles, animals:[], people:[], nextId:1, colorIdx:0, disc:{}, words:[], diary:[], today:[],
+        weather:"sereno", snow:0, powers:{}, inspire:null, fires:[], burning:[], start:g.start, dead:[], over:false,
+        dstat:{}, opts, seenCount:0, lightAt:-1, nameUsed:[n1,n2] };
+  WD = computeWD(S.tiles); colorCache = {};
+  const {x,y} = g.start;
+  const a = newPerson(n1||"Adamo","M",x,y);
+  let bx=x+1, by=y; for (const [dx,dy] of DIRS){ if (passableT(tileAt(x+dx,y+dy))){ bx=x+dx; by=y+dy; break; } }
+  const b = newPerson(n2||"Eva","F",bx,by);
+  a.partner=b.id; b.partner=a.id; a.rel[b.id]=40; b.rel[a.id]=40;
+  a.thought="Dove sono? Che posto è questo?"; b.thought="Che fame… e che bel cielo.";
+  for (const k in AK) for (let i=0;i<AK[k].init;i++){ const p=randomTileFor(k, k==="lupo"?16:6); if (p) spawnAnimal(k,p.x,p.y); }
+  for (const p of S.people) markSeen(p,6);
+  log(`La storia comincia. ${a.name} e ${b.name} si svegliano in un prato, senza niente tra le mani.`, "imp");
+  selected = a.id; cam.follow = a.id; cam.x=x+.5; cam.y=y+.5;
+  paused=false; runToDawn=false;
+  fitZoom(); dirty.all();
+}
+
+function markSeen(p, r){
+  const x0=tx(p), y0=ty(p); const rr = r ?? (tileAt(x0,y0).t===T.HILL ? 7 : 5);
+  for (let y=y0-rr; y<=y0+rr; y++) for (let x=x0-rr; x<=x0+rr; x++){
+    if (!inb(x,y) || (x-x0)*(x-x0)+(y-y0)*(y-y0) > rr*rr+1) continue;
+    const t=tileAt(x,y); if (t.seen) continue;
+    t.seen=true; S.seenCount++;
+    if (t.struct==="grotta" && !S.foundCave){ S.foundCave=true; log(`${p.name} ha trovato una grotta tra le rocce: un riparo naturale!`, "imp"); }
+  }
+}
+
+// ================= ricerca di percorsi =================
+const prevBuf = new Int32Array(W*H);
+function bfs(sx, sy, pred, maxD=60, unseen=false){
+  const N=W*H, d=new Int16Array(N).fill(-1), q=new Int32Array(N); let h=0, e=0;
+  const s=sy*W+sx; d[s]=0; q[e++]=s; prevBuf[s]=-1;
+  while (h<e){
+    const c=q[h++], cx=c%W, cy=(c/W)|0, t=S.tiles[c];
+    if (pred(t,cx,cy,d[c])) return { x:cx, y:cy, path:buildPath(c) };
+    if (d[c]>=maxD) continue;
+    for (const [dx,dy] of DIRS){
+      const nx=cx+dx, ny=cy+dy; if (!inb(nx,ny)) continue; const n=ny*W+nx; if (d[n]>=0) continue;
+      const nt=S.tiles[n]; if (!passableT(nt) || (!unseen && !nt.seen)) continue;
+      if (dx && dy && (!passableT(tileAt(cx+dx,cy)) || !passableT(tileAt(cx,cy+dy)))) continue;
+      d[n]=d[c]+1; prevBuf[n]=c; q[e++]=n;
+    }
+  }
+  return null;
+}
+function buildPath(c){ const p=[]; while (prevBuf[c]!==-1){ p.push(c); c=prevBuf[c]; } p.reverse(); return p.map(i=>[i%W,(i/W)|0]); }
+const pathTo = (a,x,y,unseen=false) => bfs(tx(a),ty(a),(t,xx,yy)=>xx===x&&yy===y,250,unseen);
+
+function stepMove(a){
+  if (!a.path.length) return true;
+  const [nx,ny]=a.path[0], t=tileAt(nx,ny);
+  if (!passableT(t)){ a.path=[]; a.task=null; return false; }
+  let sp = t.t===T.SHALLOW ? .17 : .32;
+  if (isChild(a)) sp*=.85; if (a.needs.energia<15) sp*=.7;
+  const dx=nx-a.x, dy=ny-a.y, d=Math.hypot(dx,dy);
+  if (d<=sp){ a.x=nx; a.y=ny; a.path.shift(); return !a.path.length; }
+  a.x+=dx/d*sp; a.y+=dy/d*sp; return false;
+}
+
+// ================= inventario =================
+const invCount = inv => Object.values(inv).reduce((s,v)=>s+v,0);
+const foodCount = inv => { let s=0; for (const k in FOOD) s+=inv[k]||0; return s; };
+const cap = a => isChild(a) ? 4 : has(a,"cesto") ? 24 : 8;
+function addItem(a, k, n){ const room=cap(a)-invCount(a.inv); const q=Math.max(0,Math.min(n,room)); if (q>0) a.inv[k]=(a.inv[k]||0)+q; return q; }
+function makeRoom(a, n){
+  for (const k of ["pietre","argilla","fibre","legna","pelli","selce","semi"]){
+    while (cap(a)-invCount(a.inv)<n && (a.inv[k]||0)>(k==="selce"||k==="semi"?1:0)) useItem(a.inv,k,1);
+  }
+  return cap(a)-invCount(a.inv)>=n;
+}
+function useItem(inv, k, n){ inv[k]=(inv[k]||0)-n; if (inv[k]<=0) delete inv[k]; }
+const homeTile = a => a.home ? tileAt(a.home.x,a.home.y) : null;
+const canStore = a => !!storeOf(a);
+function storeOf(a){ const t=homeTile(a); if (!t || !shelterT(t)) return null; if (!t.store) t.store={}; return t.store; }
+function inc(a,k,n=1){ a.exp[k]=(a.exp[k]||0)+n; }
+function dstat(k,n=1){ S.dstat[k]=(S.dstat[k]||0)+n; }
+
+function fireNear(x,y,r){
+  for (const i of S.fires){ const fx=i%W, fy=(i/W)|0; if (Math.hypot(fx-x,fy-y)<=r) return {x:fx,y:fy}; }
+  for (const i of S.burning){ const fx=i%W, fy=(i/W)|0; if (Math.hypot(fx-x,fy-y)<=r) return {x:fx,y:fy}; }
+  return null;
+}
+function setHome(a, x, y){
+  const old=a.home ? {...a.home} : null, oldT=homeTile(a), nt=tileAt(x,y);
+  const kids=S.people.filter(c=>c.alive && isChild(c) && (c.mother===a.id||c.father===a.id));
+  const fam=[a, personById(a.partner), ...kids].filter(p=>p && p.alive);
+  for (const p of fam){
+    const pt=homeTile(p);
+    if (p===a || !p.home || (old && p.home.x===old.x && p.home.y===old.y) || (pt && pt.struct==="grotta")) p.home={x,y};
+  }
+  const stillThere = old && alive().some(p=>p.home && p.home.x===old.x && p.home.y===old.y);
+  if (oldT && oldT!==nt && oldT.store && !stillThere){ nt.store=nt.store||{}; for (const k in oldT.store) nt.store[k]=(nt.store[k]||0)+oldT.store[k]; oldT.store={}; }
+}
+function tempNow(){
+  let t=SEASON_T[season()] + 4*Math.sin(((hour()-9)/24)*Math.PI*2);
+  if (S.weather==="pioggia") t-=3; else if (S.weather==="temporale") t-=2; else if (S.weather==="neve") t-=4;
+  return t;
+}
+
+// ================= diario =================
+function log(text, kind){ S.today.push({ h:timeStr(), x:text, k:kind||"" }); if (kind) toast(text, kind); dirty.diary=true; }
+function say(a, k, pname){ const arr=THOUGHTS[k]; if (arr) a.thought = pick(arr).replace("{p}", pname||"qualcuno"); }
+
+// ================= scoperte =================
+function expOk(a,d,insp){ for (const k in d.exp) if ((a.exp[k]||0) < Math.ceil(d.exp[k]*(insp?.5:1))) return false; return true; }
+const inspired = id => S.inspire && S.inspire.id===id && day()<=S.inspire.until;
+function canTry(a,d,action,ctx){
+  if (has(a,d.id) || d.special || !d.on.includes(action) || !reqsMet(a,d)) return false;
+  if (!expOk(a,d,inspired(d.id))) return false;
+  if (d.mat && !d.mat(a)) return false;
+  if (d.cond && !d.cond(a,ctx||{})) return false;
+  return true;
+}
+function tryDisc(a, action, ctx={}){
+  if (isChild(a) && a.age<200) return;
+  for (const d of DISC){
+    if (!canTry(a,d,action,ctx)) continue;
+    let p = d.p*(.6+a.traits.cur*.8)*(inspired(d.id)?4:1);
+    if (Math.random()<p){ learn(a,d.id); if (inspired(d.id)) S.inspire=null; return; }
+  }
+}
+function learn(a, id, teacher){
+  if (has(a,id)) return;
+  a.known.push(id); a.learned.push(id);
+  const d=DISCBY[id];
+  if (!S.disc[id]){ S.disc[id]={ by:a.name, day:day() }; log(`${a.name} ha scoperto: ${d.n}! ${d.d}`, "disc"); }
+  else if (teacher) log(`${teacher.name} ha insegnato a ${a.name}: ${d.n}.`);
+  else log(`Anche ${a.name} ha capito come funziona: ${d.n}.`);
+  a.needs.umore=Math.min(100,a.needs.umore+18);
+  dirty.disc=true;
+}
+function makeWord(){ let w=""; const n=1+(Math.random()<.65?1:0)+(Math.random()<.12?1:0); for (let i=0;i<n;i++) w+=pick(SYL); return w; }
+
+// ================= compiti =================
+function go(a, k, res, extra, pname){
+  if (!res) return false;
+  a.task = Object.assign({ k, tx:res.x, ty:res.y, phase: res.path.length ? "go" : "work", t:0, age:0 }, extra||{});
+  a.path = res.path; say(a,k,pname); return true;
+}
+const here = (a,k,extra) => go(a,k,{x:tx(a),y:ty(a),path:[]},extra);
+function follow(a, k, fol, extra, pname){
+  a.task = Object.assign({ k, phase:"go", t:0, age:0, fol }, extra||{}); a.path=[]; say(a,k,pname); return true;
+}
+function foodHere(a,t){
+  let n=(t.berries||0)+(t.fruit||0)+(t.mush||0)+(t.grain||0);
+  if (t.roots>0) n+=t.roots;
+  if (t.crop && t.crop.ripe) n+=5;
+  return n;
+}
+function harvest(a,t){
+  let got=0; const take=(key,item,max)=>{ const n=Math.min(t[key]||0,max); if (n<=0) return; const q=addItem(a,item,n); t[key]-=q; got+=q; };
+  if (t.crop && t.crop.ripe){ const q=addItem(a,"farro",8); got+=q; addItem(a,"semi",2); t.crop=null; if (!S.firstHarvest){ S.firstHarvest=true; log(`${a.name} ha mietuto il primo campo di farro coltivato!`, "imp"); } }
+  take("berries","bacche",4);
+  take("fruit", t.tree===3?"castagne":"frutta", 4);
+  take("mush","funghi",3);
+  if (t.grain>0){ const before=got; take("grain","farro",3); if (got>before && has(a,"agricoltura")) addItem(a,"semi",1); }
+  if (t.roots>0) take("roots","radici",has(a,"bastone")?3:2);
+  return got;
+}
+function eatFrom(a, src, maxItems=99){
+  const x=tx(a), y=ty(a); const fire=!!fireNear(x,y,3); const cook=fire && has(a,"cottura");
+  tryDisc(a,"mangiare",{fire});
+  let n=0;
+  const keys=Object.keys(FOOD).filter(k=>src[k]>0).sort((p,q)=>FOOD[p]-FOOD[q]);
+  while (a.needs.cibo<92 && n<maxItems){
+    const k=keys.find(k=>src[k]>0); if (!k) break;
+    useItem(src,k,1); n++;
+    let v=FOOD[k];
+    if (cook && COOKED[k] && (k!=="farro" || has(a,"pane"))) { v=COOKED[k]; dstat("cotto"); }
+    else if ((k==="carne"||k==="pesce") && !has(a,"medicina") && Math.random()<.1){ a.salute-=8; log(`${a.name} ha mal di pancia per il cibo crudo.`); }
+    a.needs.cibo=Math.min(100,a.needs.cibo+v);
+    if (k==="frutta"||k==="castagne"||k==="bacche") inc(a,"frutta");
+    if (k==="farro"){ inc(a,"farro"); inc(a,"frutta"); }
+    if (has(a,"agricoltura") && (k==="frutta"||k==="farro") && Math.random()<.4) addItem(a,"semi",1);
+  }
+  return n;
+}
+function wantsHut(a){
+  if (!has(a,"capanna") || isChild(a)) return false;
+  const ht=homeTile(a);
+  if (!ht || ht.struct==="grotta" || !shelterT(ht)) return true;
+  const occ=(h)=>alive().filter(p=>p.home && p.home.x===h.x && p.home.y===h.y).length;
+  if (occ(a.home)<=5 || !(a.born || a.partner)) return false;
+  for (let i=0;i<W*H;i++){ const t=S.tiles[i]; if ((t.struct==="capanna"||t.struct==="casa") && occ({x:i%W,y:(i/W)|0})<=2 && Math.hypot(i%W-a.home.x,((i/W)|0)-a.home.y)<14){ setHome(a,i%W,(i/W)|0); return false; } }
+  return true;
+}
+const needClay = a => has(a,"casa") && homeTile(a)?.struct==="capanna" && (a.inv.argilla||0)<3;
+function siteOK(t,x,y){ return (t.t===T.GRASS||t.t===T.SAND) && !t.struct && !t.tree && !t.crop && !t.bush && WD[y*W+x]<=6 && WD[y*W+x]>=1; }
+function unseenNear(x,y){ for (let yy=y-2; yy<=y+2; yy++) for (let xx=x-2; xx<=x+2; xx++) if (inb(xx,yy) && !tileAt(xx,yy).seen) return true; return false; }
+function sperimentaCands(a){ return DISC.filter(d=>canTry(a,d,"sperimenta",{})); }
+
+const TASKS = {
+  bere:{ plan:a=>go(a,"bere",bfs(tx(a),ty(a),(t,x,y)=>t.t===T.SHALLOW||nearWater(x,y),80)), dur:10,
+    done(a){ a.needs.acqua=100; const x=tx(a), y=ty(a); let clay=false; for (const [dx,dy] of [[0,0],...DIRS]) if (inb(x+dx,y+dy) && tileAt(x+dx,y+dy).clay) clay=true;
+      if (clay){ inc(a,"argilla"); if (needClay(a)) addItem(a,"argilla",2); } } },
+  mangiare:{
+    plan(a){ if (foodCount(a.inv)>0) return here(a,"mangiare"); const st=storeOf(a); if (st && foodCount(st)>0) return go(a,"mangiare",pathTo(a,a.home.x,a.home.y),{store:1}); return false; },
+    dur:8,
+    done(a,k){
+      if (k.parent){ const p=personById(k.parent); if (p && dist(p,a)<3) eatFrom(a,p.inv,2); return; }
+      const src=k.store?storeOf(a):a.inv; if (!src) return; eatFrom(a,src);
+      if (k.store) for (const f of Object.keys(FOOD)) while (src[f]>0 && foodCount(a.inv)<3 && addItem(a,f,1)) useItem(src,f,1);
+    } },
+  raccogli:{ plan(a){ if (!makeRoom(a,2)) return false; return go(a,"raccogli",bfs(tx(a),ty(a),t=>foodHere(a,t)>0,60)); }, dur:9,
+    done(a,k){ const t=tileAt(tx(a),ty(a)); const g=harvest(a,t); inc(a,"raccolta"); if (g) dstat("cibo",g); if (a.needs.cibo<55) eatFrom(a,a.inv); tryDisc(a,"raccogli");
+      const chain=(k.chain||0)+1;
+      if (chain<4 && foodCount(a.inv)<5 && invCount(a.inv)<cap(a) && !isNight()) go(a,"raccogli",bfs(tx(a),ty(a),tt=>foodHere(a,tt)>0,5),{chain}); } },
+  legna:{ plan(a){ if ((a.inv.legna||0)>=14 || invCount(a.inv)>=cap(a)) return false; return go(a,"legna",bfs(tx(a),ty(a),t=>t.tree>0,50)); },
+    dur:a=>has(a,"selce")?10:16,
+    done(a){ const q=addItem(a,"legna",has(a,"selce")?3:2); inc(a,"legna"); dstat("legna",q); tryDisc(a,"legna"); } },
+  pietre:{ plan(a){ if (invCount(a.inv)>=cap(a)) return false; const clay=needClay(a); return go(a,"pietre",bfs(tx(a),ty(a),t=>t.stone>0||t.flint>0||(clay&&t.clay>0),50)); }, dur:10,
+    done(a){ const t=tileAt(tx(a),ty(a));
+      if (t.clay && needClay(a)) addItem(a,"argilla",2);
+      if (t.stone>0){ if (addItem(a,"pietre",1)) t.stone--; }
+      if (t.flint>0){ if (addItem(a,"selce",1)) t.flint--; if (!S.firstFlint){ S.firstFlint=true; log(`${a.name} ha trovato una pietra lucida e scura che si spezza in schegge affilate: selce.`); } }
+      inc(a,"pietre"); tryDisc(a,"pietre"); } },
+  fibre:{ plan(a){ if (invCount(a.inv)>=cap(a)) return false; return go(a,"fibre",bfs(tx(a),ty(a),t=>t.reeds>0||t.t===T.GRASS,40)); }, dur:10,
+    done(a){ const t=tileAt(tx(a),ty(a)); addItem(a,"fibre",t.reeds>0?2:1); inc(a,"raccolta"); } },
+  esplora:{ plan(a){ return go(a,"esplora",bfs(tx(a),ty(a),(t,x,y,d)=>d>=4 && unseenNear(x,y) && Math.random()<.3,90)); }, dur:4,
+    done(a){ inc(a,"esplora"); } },
+  dormire:{
+    plan(a){
+      if (a.home){ const r=pathTo(a,a.home.x,a.home.y); if (r && r.path.length<50) return go(a,"dormire",r); }
+      if (!a.home || !shelterT(homeTile(a))){ const r=bfs(tx(a),ty(a),t=>t.struct==="grotta",30); if (r){ setHome(a,r.x,r.y); return go(a,"dormire",r); } }
+      return go(a,"dormire", bfs(tx(a),ty(a),t=>t.tree>0||shelterT(t),5) || bfs(tx(a),ty(a),t=>t.t!==T.SHALLOW,6) || {x:tx(a),y:ty(a),path:[]});
+    },
+    dur:()=>1e9,
+    work(a){ const n=a.needs; if (!isNight() && n.energia>=55) a.task=null; else if (n.acqua<8 || n.cibo<6 || (n.calore<15 && tempNow()<14 && !fireNear(tx(a),ty(a),3) && !shelterT(tileAt(tx(a),ty(a))))) a.task=null; },
+    done(){} },
+  riposa:{ plan:a=>here(a,"riposa"), dur:40, done(){} },
+  scaldarsi:{
+    plan(a){
+      const r=bfs(tx(a),ty(a),(t,x,y)=>!!fireNear(x,y,2) && t.struct!=="fuoco",25); if (r) return go(a,"scaldarsi",r);
+      if (a.home && shelterT(homeTile(a))) return go(a,"scaldarsi",pathTo(a,a.home.x,a.home.y));
+      const c=bfs(tx(a),ty(a),t=>shelterT(t),20); if (c) return go(a,"scaldarsi",c);
+      if (has(a,"fuoco") && a.inv.legna>0) return TASKS.accendi.plan(a);
+      return false;
+    }, dur:40, done(){} },
+  accendi:{
+    plan(a){
+      if (!has(a,"fuoco") || !(a.inv.legna>0)) return false;
+      const base=a.home || {x:tx(a),y:ty(a)};
+      let target=null;
+      for (let y=base.y-2;y<=base.y+2;y++) for (let x=base.x-2;x<=base.x+2;x++) if (inb(x,y) && tileAt(x,y).struct==="fuoco") target={x,y};
+      if (!target){
+        if (!a.home) target=base;
+        else for (const [dx,dy] of DIRS){ const x=base.x+dx, y=base.y+dy; if (inb(x,y)){ const t=tileAt(x,y); if (passableT(t) && !t.struct && !t.tree && t.t!==T.SHALLOW){ target={x,y}; break; } } }
+      }
+      if (!target) return false;
+      return go(a,"accendi",pathTo(a,target.x,target.y),{fx:target.x,fy:target.y});
+    },
+    dur:12,
+    done(a,k){
+      const t=tileAt(k.fx,k.fy), i=idx(k.fx,k.fy); if (t.struct && t.struct!=="fuoco") return;
+      const lit=t.struct==="fuoco" && t.fuel>0; const used=Math.min(a.inv.legna||0, lit?3:2); if (!used) return;
+      useItem(a.inv,"legna",used); t.struct="fuoco"; t.fuel=Math.min(420,(t.fuel||0)+used*75);
+      if (!S.fires.includes(i)) S.fires.push(i);
+      if (!S.firstFire){ S.firstFire=true; log(`${a.name} ha acceso il primo fuoco da campo. La notte non fa più così paura.`, "imp"); }
+      inc(a,"fuoco"); tryDisc(a,"accendi");
+    } },
+  costruisci:{
+    plan(a){
+      const ht=homeTile(a), mate=personById(a.partner);
+      if (ht && ht.struct==="capanna" && has(a,"casa")){
+        if ((a.inv.pietre||0)<5) return TASKS.pietre.plan(a);
+        if ((a.inv.argilla||0)<3) return TASKS.pietre.plan(a) || TASKS.bere.plan(a);
+        return go(a,"costruisci",pathTo(a,a.home.x,a.home.y),{up:1});
+      }
+      if (!wantsHut(a)) return false;
+      if (mate && mate.alive && mate.task && mate.task.k==="costruisci" && !mate.task.up) return false;
+      if ((a.inv.legna||0)<8) return TASKS.legna.plan(a);
+      if ((a.inv.fibre||0)<2) return TASKS.fibre.plan(a);
+      const base = a.home || {x:tx(a),y:ty(a)};
+      return go(a,"costruisci",bfs(tx(a),ty(a),(t,x,y)=>siteOK(t,x,y) && Math.hypot(x-base.x,y-base.y)<=7,40));
+    },
+    dur:(a,k)=>k.up?80:60,
+    done(a,k){
+      const x=tx(a), y=ty(a), t=tileAt(x,y);
+      if (k.up){
+        if (t.struct!=="capanna" || (a.inv.pietre||0)<5 || (a.inv.argilla||0)<3) return;
+        useItem(a.inv,"pietre",5); useItem(a.inv,"argilla",3); t.struct="casa";
+        log(`${a.name} ha trasformato la capanna in una casa di pietra e fango.`, "imp"); return;
+      }
+      if (!siteOK(t,x,y) || (a.inv.legna||0)<8 || (a.inv.fibre||0)<2) return;
+      useItem(a.inv,"legna",8); useItem(a.inv,"fibre",2); t.struct="capanna"; t.store=t.store||{};
+      setHome(a,x,y);
+      log(S.huts ? `${a.name} ha costruito una nuova capanna.` : `${a.name} ha costruito la prima capanna di Terra Zero!`, "imp");
+      S.huts=(S.huts||0)+1; tryDisc(a,"costruisci");
+    } },
+  caccia:{
+    plan(a){
+      if (!makeRoom(a,3)) return false;
+      let best=null, bd=22;
+      for (const an of S.animals){ if (an.tame || (an.k==="lupo" && !has(a,"arco")) || an.k==="cane") continue; const t=tileAt(Math.round(an.x),Math.round(an.y)); if (!t.seen) continue; const d=dist(a,an); if (d<bd){ bd=d; best=an; } }
+      return best ? follow(a,"caccia",{t:"a",id:best.id},{maxAge:110}) : false;
+    },
+    dur:1,
+    done(a,k){
+      const an=animalById(k.fol.id); if (!an) return; k.tries=(k.tries||0)+1; inc(a,"caccia");
+      const def=AK[an.k];
+      const dog=S.animals.some(d=>d.k==="cane" && d.owner===a.id && dist(d,a)<4);
+      let p=(has(a,"arco")?.5:.28)+.2*a.traits.cor+(dog?.15:0)+(an.k==="coniglio"?.1:0);
+      if (Math.random()<p){
+        S.animals.splice(S.animals.indexOf(an),1);
+        const m=addItem(a,"carne",def.meat); if (def.skin) addItem(a,"pelli",def.skin);
+        dstat("prede"); dstat("cibo",m);
+        const first=!S["hunt_"+an.k]; S["hunt_"+an.k]=true;
+        log(`${a.name} ha cacciato ${an.k==="cervo"?"un cervo":an.k==="cinghiale"?"un cinghiale":an.k==="capra"?"una capra":an.k==="lupo"?"un lupo":"un coniglio"}.`, first?"imp":"");
+        tryDisc(a,"caccia");
+      } else {
+        if (an.k==="cinghiale" && Math.random()<.35){ a.salute-=18; log(`Il cinghiale ha caricato ${a.name}, che è rimasto ferito.`, "bad"); return; }
+        an.flee=40;
+        if (k.tries<3 && k.age<110){ k.phase="go"; k.t=0; a.task=k; }
+      }
+    } },
+  pesca:{ plan(a){ if (!makeRoom(a,2)) return false; return go(a,"pesca",bfs(tx(a),ty(a),t=>t.t===T.SHALLOW&&t.fish>0,50)); }, dur:18,
+    done(a){ const t=tileAt(tx(a),ty(a)); inc(a,"pesca");
+      const p=has(a,"pesca")?.6:has(a,"lancia")?.35:.2;
+      if (t.fish>0 && Math.random()<p){ const q=addItem(a,"pesce",has(a,"pesca")?2:1); t.fish=Math.max(0,t.fish-q); dstat("pesci",q); dstat("cibo",q);
+        if (!S.firstFish){ S.firstFish=true; log(`${a.name} ha preso il primo pesce a mani nude!`, "imp"); } }
+      tryDisc(a,"pesca"); } },
+  compagnia:{
+    plan(a){
+      const others=alive().filter(p=>p!==a); if (!others.length) return false;
+      let tgt=null; const mate=personById(a.partner);
+      if (mate && mate.alive && Math.random()<.6) tgt=mate;
+      else { let tot=0; for (const p of others) tot+=(a.rel[p.id]||10)+10; let r=Math.random()*tot; for (const p of others){ r-=(a.rel[p.id]||10)+10; if (r<=0){ tgt=p; break; } } }
+      tgt=tgt||others[0];
+      return follow(a,"compagnia",{t:"p",id:tgt.id},{maxAge:140},tgt.name);
+    },
+    dur:20,
+    work(a,k){ if (k.t!==1) return; const b=personById(k.fol.id); if (b && b.alive && (!b.task || ["vaga","riposa","esplora","sperimenta"].includes(b.task.k))) { b.task={k:"ascolta",phase:"work",t:0,age:0,with:a.id}; b.path=[]; say(b,"ascolta"); } },
+    done(a,k){ const b=personById(k.fol.id); if (!b || !b.alive || dist(a,b)>2.5) return; socialize(a,b); } },
+  ascolta:{ plan:()=>false, dur:20, done(){} },
+  pianta:{ plan(a){ if (!(a.inv.semi>0) || !a.home) return false; const h=a.home; return go(a,"pianta",bfs(tx(a),ty(a),(t,x,y)=>Math.hypot(x-h.x,y-h.y)<=4 && (t.t===T.GRASS||t.t===T.SAND) && !t.struct && !t.tree && !t.crop && !t.bush,40)); }, dur:14,
+    done(a){ const t=tileAt(tx(a),ty(a)); if (t.crop || t.struct || !(a.inv.semi>0)) return; useItem(a.inv,"semi",1); t.crop={g:0,ripe:false}; t.wild=0; t.roots=0;
+      if (!S.firstCrop){ S.firstCrop=true; log(`${a.name} ha seminato il primo campo vicino casa.`, "imp"); } } },
+  addomestica:{
+    plan(a){ let best=null, bd=18; for (const an of S.animals){ if (an.tame || !(an.k==="capra" || (an.k==="lupo" && a.traits.cor>.6))) continue; if (!tileAt(Math.round(an.x),Math.round(an.y)).seen) continue; const d=dist(a,an); if (d<bd){ bd=d; best=an; } }
+      return best ? follow(a,"addomestica",{t:"a",id:best.id},{maxAge:160}) : false; },
+    dur:12,
+    done(a,k){ const an=animalById(k.fol.id); if (!an || an.tame) return; let p=an.k==="capra"?.35:.16;
+      if (foodCount(a.inv)>0){ const f=Object.keys(FOOD).find(f=>a.inv[f]>0); useItem(a.inv,f,1); } else p/=2;
+      if (Math.random()<p){ an.tame=true; an.owner=a.id; if (an.k==="lupo"){ an.k="cane"; log(`${a.name} ha conquistato la fiducia di un lupo: ora è il loro cane!`, "imp"); } else log(`${a.name} ha addomesticato una capra: darà latte ogni giorno.`, "imp"); }
+      else an.flee=30; } },
+  dipingi:{
+    plan(a){ const ht=homeTile(a); if (ht && shelterT(ht)) return go(a,"dipingi",pathTo(a,a.home.x,a.home.y)); return go(a,"dipingi",bfs(tx(a),ty(a),t=>shelterT(t),25)); },
+    dur:40,
+    done(a){ const t=tileAt(tx(a),ty(a)); if (!shelterT(t)) return; t.paint=(t.paint||0)+1; a.lastPaint=day(); a.needs.umore=Math.min(100,a.needs.umore+25);
+      log(`${a.name} ha dipinto sulla parete ${pick(["un cervo in corsa","le mani di tutta la famiglia","il sole e la luna","la caccia al cinghiale","il fuoco con tutti intorno","un grande pesce","le stelle di stanotte"])}.`, "imp"); } },
+  sperimenta:{ plan:a=>sperimentaCands(a).length ? here(a,"sperimenta") : false, dur:25, done(a){ a.lastTry=S.tick; tryDisc(a,"sperimenta"); } },
+  cuci:{ plan:a=>(has(a,"vestiti") && !a.clothes && (a.inv.pelli||0)>=2) ? here(a,"cuci") : false, dur:30,
+    done(a){ if ((a.inv.pelli||0)<2) return; useItem(a.inv,"pelli",2); a.clothes=true; log(`${a.name} indossa i primi vestiti di pelle.`, "imp"); } },
+  deposita:{ plan(a){ if (!storeOf(a)) return false; return go(a,"deposita",pathTo(a,a.home.x,a.home.y)); }, dur:6,
+    done(a){ const st=storeOf(a); if (!st) return; let n=0; for (const k of Object.keys(FOOD)){ while ((a.inv[k]||0)>0 && foodCount(a.inv)>2){ useItem(a.inv,k,1); st[k]=(st[k]||0)+1; n++; } } if (n) dstat("scorte",n); } },
+  vaga:{ plan(a){ return go(a,"vaga",bfs(tx(a),ty(a),(t,x,y,d)=>d>=2 && Math.random()<.2,5) || {x:tx(a),y:ty(a),path:[]}); }, dur:12, done(){} },
+  vai:{ plan(a){ const o=a.order; if (!o || o.k!=="vai") return false; const r=pathTo(a,o.x,o.y,true); if (!r){ a.order=null; log(`${a.name} non trova una strada per arrivare dove volevi.`); return false; } return go(a,"vai",r); }, dur:4,
+    done(a){ log(`${a.name} è ${sexW(a,"arrivato","arrivata")} dove gli avevi chiesto.`); a.order=null; } },
+  segui:{ plan:()=>false, dur:1, done(){} }
+};
+
+function socialize(a,b){
+  a.needs.umore=Math.min(100,a.needs.umore+28); b.needs.umore=Math.min(100,b.needs.umore+20);
+  a.rel[b.id]=Math.min(100,(a.rel[b.id]||10)+5); b.rel[a.id]=Math.min(100,(b.rel[a.id]||10)+5);
+  dstat("chiacchiere");
+  const lang=has(a,"linguaggio")&&has(b,"linguaggio");
+  for (const [s,r] of [[a,b],[b,a]]){
+    if (isChild(r) && r.age<120) continue;
+    const can=s.known.filter(id=>!has(r,id) && !DISCBY[id].special && reqsMet(r,DISCBY[id]));
+    if (can.length && Math.random()<(lang?.55:.22)) learn(r,pick(can),s);
+  }
+  for (const [g,r] of [[a,b],[b,a]]) if (r.needs.cibo<40 && foodCount(g.inv)>1){ let n=0; for (const f of Object.keys(FOOD)) while (g.inv[f]>0 && n<2){ useItem(g.inv,f,1); r.inv[f]=(r.inv[f]||0)+1; n++; } if (n){ eatFrom(r,r.inv,2); if (Math.random()<.3) log(`${g.name} ha diviso il suo cibo con ${r.name}.`); } }
+  if (S.words.length<CONCEPTS.length && Math.random()<.5){
+    const c=CONCEPTS[S.words.length], w=makeWord(); S.words.push({c,w,by:a.name,day:day()});
+    log(`${a.name} indica ${c==="io"||c==="tu"?"se stess"+sexW(a,"o","a"):"qualcosa"} e dice «${w[0].toUpperCase()+w.slice(1)}!». ${b.name} ripete: ora «${w}» vuol dire “${c}”.`);
+    dirty.disc=true;
+  }
+  if (S.words.length>=12) for (const p of [a,b]) if (!has(p,"linguaggio") && !(isChild(p) && p.age<200)) learn(p,"linguaggio");
+  const fire=!!fireNear(tx(a),ty(a),3);
+  tryDisc(a,"compagnia",{fire});
+  if (has(a,"musica") && fire && isEvening() && Math.random()<.4){
+    for (const p of alive()) if (dist(p,a)<5) p.needs.umore=Math.min(100,p.needs.umore+25);
+    log(`${a.name} batte il ritmo su un tronco e tutti cantano attorno al fuoco.`);
+  }
+  if (!a.partner && !b.partner && a.sex!==b.sex && !isChild(a) && !isChild(b) && !related(a,b) && (a.rel[b.id]||0)>=55 && (b.rel[a.id]||0)>=55){
+    a.partner=b.id; b.partner=a.id; log(`${a.name} e ${b.name} sono diventati una coppia.`, "imp");
+  }
+}
+function related(a,b){
+  return a.mother===b.id||a.father===b.id||b.mother===a.id||b.father===a.id||(a.mother&&a.mother===b.mother)||(a.father&&a.father===b.father);
+}
+
+// ================= decisioni =================
+function addOpt(opts,k,s){ opts.push([k, s+Math.random()*8]); }
+function decide(a){
+  if (isChild(a)) return decideChild(a);
+  const n=a.needs, night=isNight(), cold=tempNow()<14, s=season(), opts=[], tr=a.traits;
+  addOpt(opts,"bere",(100-n.acqua)*1.5-25);
+  if (foodCount(a.inv)>0 || foodCount(storeOf(a)||{})>0) addOpt(opts,"mangiare",(100-n.cibo)*1.5-30);
+  const kidsHungry=alive().some(c=>isChild(c) && (c.mother===a.id||c.father===a.id) && c.needs.cibo<60);
+  addOpt(opts,"raccogli",(100-n.cibo)*1.1 - foodCount(a.inv)*5 + (kidsHungry?25:0) + (s===2 && canStore(a)?18:0) - 5);
+  if (night) addOpt(opts,"dormire",90+(100-n.energia)*.3); else addOpt(opts,"dormire",(100-n.energia)*1.3-45);
+  if (!night && n.energia<60) addOpt(opts,"riposa",(100-n.energia)*.5-25);
+  const warmHere=shelterT(tileAt(tx(a),ty(a))) || !!fireNear(tx(a),ty(a),3);
+  if (cold && n.calore<55 && !warmHere) addOpt(opts,"scaldarsi",(100-n.calore)*1.3);
+  if (has(a,"fuoco")){
+    const base=a.home||{x:tx(a),y:ty(a)}; const f=fireNear(base.x,base.y,2); const fuel=f?tileAt(f.x,f.y).fuel||0:0;
+    if ((!f || fuel<90) && (isEvening() || cold) && a.inv.legna>0) addOpt(opts,"accendi",55);
+  }
+  const wantHut=wantsHut(a);
+  const woodNeed=(wantHut && (a.inv.legna||0)<8) || (has(a,"fuoco") && (a.inv.legna||0)<3);
+  addOpt(opts,"legna",10+16*tr.lab+(woodNeed?25:0)+(!has(a,"bastone")?10:0)-(a.inv.legna||0)*2);
+  addOpt(opts,"pietre",5+14*tr.cur+(!has(a,"selce")?14:0)+(needClay(a)||(has(a,"casa")&&homeTile(a)?.struct==="capanna"&&(a.inv.pietre||0)<5)?25:0)-(a.inv.pietre||0)*3);
+  if (has(a,"fibre")) addOpt(opts,"fibre",(wantHut&&(a.inv.fibre||0)<2)?30:2);
+  const explored=S.seenCount/(W*H);
+  addOpt(opts,"esplora",8+24*tr.cur+(day()<4?12:0)-explored*25);
+  addOpt(opts,"compagnia",(100-n.umore)*.8*tr.soc-12);
+  if (wantHut || (has(a,"casa") && homeTile(a)?.struct==="capanna")) addOpt(opts,"costruisci",30+30*tr.lab);
+  if (has(a,"lancia")) addOpt(opts,"caccia",(100-n.cibo)*.7+20*tr.cor-10+(has(a,"vestiti")&&!a.clothes&&(a.inv.pelli||0)<2?14:0));
+  addOpt(opts,"pesca",(100-n.cibo)*.7-(has(a,"pesca")?5:25));
+  if (has(a,"agricoltura") && s<=1 && a.inv.semi>0 && a.home) addOpt(opts,"pianta",25+25*tr.lab);
+  if (has(a,"addomesticamento") && S.animals.filter(x=>x.tame).length<alive().length) addOpt(opts,"addomestica",12+12*tr.cor);
+  if (has(a,"pittura") && day()-a.lastPaint>3) addOpt(opts,"dipingi",8+15*tr.cur);
+  if (has(a,"vestiti") && !a.clothes && (a.inv.pelli||0)>=2) addOpt(opts,"cuci",50);
+  if (canStore(a) && a.home && foodCount(a.inv)>=6) addOpt(opts,"deposita",30);
+  const cands=sperimentaCands(a);
+  const insp=cands.some(d=>inspired(d.id));
+  if (cands.length && (insp || S.tick-(a.lastTry||-999)>DAY*.6)) addOpt(opts,"sperimenta",4+14*tr.cur+(insp?40:0));
+  addOpt(opts,"vaga",4);
+  if (a.order){
+    const crit=n.acqua<20||n.cibo<15||n.energia<10||a.salute<30||(cold&&n.calore<20);
+    const o=ORDERS.find(o=>o.k===a.order.k);
+    if (!crit && o){ for (const op of opts) if (o.tasks.includes(op[0])) op[1]+=150; if (o.k==="vai") opts.push(["vai",999]); }
+    else if (crit && !a.order.warned){ a.order.warned=true; a.thought="Prima devo pensare a sopravvivere."; }
+  }
+  opts.sort((p,q)=>q[1]-p[1]);
+  for (const [k] of opts) if (TASKS[k].plan(a)) return;
+}
+function decideChild(a){
+  const n=a.needs; const mom=personById(a.mother), dad=personById(a.father);
+  const par=(mom&&mom.alive)?mom:(dad&&dad.alive)?dad:null;
+  if (n.cibo<60){
+    if (par && dist(par,a)<2.5 && foodCount(par.inv)>0) return here(a,"mangiare",{parent:par.id});
+    const st=storeOf(a); if (st && foodCount(st)>0 && TASKS.mangiare.plan(a)) return;
+    if (a.age>40 && TASKS.raccogli.plan(a)) return;
+  }
+  if (n.acqua<55 && TASKS.bere.plan(a)) return;
+  if (isNight() || n.energia<25){ if (TASKS.dormire.plan(a)) return; }
+  if (tempNow()<14 && n.calore<50 && !shelterT(tileAt(tx(a),ty(a))) && !fireNear(tx(a),ty(a),3) && TASKS.scaldarsi.plan(a)) return;
+  if (par && dist(par,a)>2.5) return follow(a,"segui",{t:"p",id:par.id},{maxAge:90});
+  if (Math.random()<.25 && TASKS.compagnia.plan(a)) return;
+  TASKS.vaga.plan(a);
+}
+
+// ================= aggiornamento persone =================
+function updatePerson(a){
+  const n=a.needs, k=a.task, sl=k && k.k==="dormire" && k.phase==="work", rest=k && k.k==="riposa" && k.phase==="work";
+  const child=isChild(a), cm=child?.6:1, s=season();
+  n.cibo -= (sl?.07:.15)*cm + (a.preg?.03:0);
+  n.acqua -= (sl?.09:.24)*cm*(s===1?1.3:1)*((S.weather==="pioggia"||S.weather==="temporale")?.6:1)*(has(a,"vasi")?.75:1);
+  if (sl) n.energia+=.85; else if (rest) n.energia+=.5; else n.energia-=.42*(child?.8:1);
+  const x=tx(a), y=ty(a), t=tileAt(x,y), temp=tempNow(), mate=personById(a.partner);
+  if (fireNear(x,y,3)) n.calore+=.5;
+  else {
+    const huddle = mate && mate.alive && dist(mate,a)<1.6 ? 3 : 0;
+    const eff = temp + (t.struct==="casa"?22:shelterT(t)?14:0) + (a.clothes?6:0) + huddle - (S.weather==="neve" && !shelterT(t)?2:0);
+    if (eff<14) n.calore-=(14-eff)*.012; else n.calore+=.25;
+  }
+  n.umore-=.025;
+  if (mate && mate.alive && dist(mate,a)<3) n.umore+=.03;
+  if (sl && mate && mate.alive && dist(mate,a)<2 && mate.task && mate.task.k==="dormire") a.sleptNear=true;
+  for (const key in n) n[key]=clamp(n[key],0,100);
+  if (n.cibo<=0) a.salute-=.12; if (n.acqua<=0) a.salute-=.25; if (n.calore<=0) a.salute-=.15; if (n.energia<=0) a.salute-=.04;
+  if (n.cibo>25 && n.acqua>25 && n.calore>25) a.salute+=has(a,"medicina")?.08:.04;
+  a.salute=Math.min(100,a.salute);
+  if (a.salute<=0){ die(a); return; }
+  if (!a.task) decide(a);
+  if (a.task) runTask(a);
+}
+function die(a){
+  a.alive=false; a.task=null;
+  const n=a.needs; const cause = n.acqua<=0?"di sete" : n.cibo<=0?"di fame" : n.calore<=0?"di freddo" : "per le ferite";
+  log(`${a.name} è ${sexW(a,"morto","morta")} ${cause}. Il giorno ${day()} resterà nella memoria di tutti.`, "bad");
+  S.dead.push({name:a.name, day:day(), cause});
+  for (const p of S.people) if (p.partner===a.id) p.partner=0;
+  for (const an of S.animals) if (an.owner===a.id){ const heir=alive().find(p=>p!==a && !isChild(p)); an.owner=heir?heir.id:0; }
+  if (selected===a.id){ selected=alive()[0]?.id||null; cam.follow=selected; }
+  dirty.all();
+}
+function runTask(a){
+  const k=a.task, def=TASKS[k.k];
+  k.age++;
+  if (k.age>600){ a.task=null; return; }
+  if (k.phase==="go"){
+    if (k.fol){
+      const tg = k.fol.t==="a" ? animalById(k.fol.id) : personById(k.fol.id);
+      if (!tg || tg.alive===false || k.age>(k.maxAge||150)){ a.task=null; return; }
+      if (dist(tg,a)<1.3){ k.phase="work"; k.t=0; a.path=[]; return; }
+      if (k.age%8===1 || !a.path.length){
+        const gx=Math.round(tg.x), gy=Math.round(tg.y);
+        const r=bfs(tx(a),ty(a),(t,x,y)=>Math.abs(x-gx)<=1&&Math.abs(y-gy)<=1,70,true);
+        if (!r){ a.task=null; return; }
+        a.path=r.path; if (!a.path.length){ k.phase="work"; k.t=0; return; }
+      }
+      stepMove(a); return;
+    }
+    if (stepMove(a)){ if (a.task===k){ k.phase="work"; k.t=0; } }
+    return;
+  }
+  k.t++;
+  if (def.work) def.work(a,k);
+  if (a.task!==k) return;
+  const dur=typeof def.dur==="function"?def.dur(a,k):def.dur;
+  if (k.t>=dur){ a.task=null; def.done(a,k); }
+}
+
+// ================= animali =================
+function animalAllowed(an,t){ if (!passableT(t) || t.t===T.SHALLOW || t.t===T.MOUNT) return false; const b=AK[an.k].b; return !b || b.includes(t.t) || an.tame; }
+function protectedP(p){ return !!fireNear(tx(p),ty(p),4) || shelterT(tileAt(tx(p),ty(p))); }
+function updateAnimals(){
+  const ppl=alive(), night=isNight();
+  for (let i=S.animals.length-1;i>=0;i--){
+    const an=S.animals[i], def=AK[an.k];
+    if (an.cd>0) an.cd--; if (an.flee>0) an.flee--;
+    // lupi di notte
+    if (an.k==="lupo" && night && an.cd<=0 && day()>6){
+      let prey=null, bd=8; for (const p of ppl){ const d=dist(p,an); if (d<bd && !protectedP(p)){ bd=d; prey=p; } }
+      if (prey && bd<.9){
+        if (has(prey,"lancia") && Math.random()<.3+.3*prey.traits.cor){ S.animals.splice(i,1); addItem(prey,"pelli",1); log(`Di notte un lupo ha attaccato ${prey.name}, che l'ha ucciso con la lancia.`, "imp"); continue; }
+        prey.salute-=10; prey.needs.umore=Math.max(0,prey.needs.umore-20); an.cd=120; an.flee=30;
+        log(`Un lupo ha aggredito ${prey.name} nel buio!`, "bad"); continue;
+      }
+      if (prey && !an.flee){ an.hunt=prey.id; } else an.hunt=0;
+    } else an.hunt=0;
+    const ddx=an.tx-an.x, ddy=an.ty-an.y, dd=Math.hypot(ddx,ddy);
+    const sp=def.sp*2*(an.flee>0?1.3:1);
+    if (dd>sp){ an.x+=ddx/dd*sp; an.y+=ddy/dd*sp; continue; }
+    an.x=an.tx; an.y=an.ty;
+    const ax=Math.round(an.x), ay=Math.round(an.y);
+    let threat=null;
+    if (!an.tame && def.fear>0){ let bd=(an.k==="lupo"&&night)?0:def.fear; for (const p of ppl){ const d=dist(p,an); if (d<bd){ bd=d; threat=p; } } if (an.k==="lupo"){ const f=fireNear(ax,ay,4); if (f) threat={x:f.x,y:f.y}; } }
+    const nb=[]; for (const [dx,dy] of DIRS){ const nx=ax+dx, ny=ay+dy; if (inb(nx,ny) && animalAllowed(an,tileAt(nx,ny))) nb.push([nx,ny]); }
+    if (!nb.length) continue;
+    let goal=null;
+    if (an.tame){ const o=personById(an.owner); if (o && o.alive && dist(o,an)>2.5) goal=o; else if (!o || !o.alive){ const h=S.start; if (Math.hypot(h.x-an.x,h.y-an.y)>6) goal=h; } }
+    else if (an.hunt){ goal=personById(an.hunt); }
+    let ch;
+    if (threat || an.flee>0){ const th=threat||ppl.reduce((b,p)=>!b||dist(p,an)<dist(b,an)?p:b,null); if (!th){ ch=pick(nb); } else ch=nb.reduce((b,c)=>Math.hypot(c[0]-th.x,c[1]-th.y)>Math.hypot(b[0]-th.x,b[1]-th.y)?c:b); }
+    else if (goal) ch=nb.reduce((b,c)=>Math.hypot(c[0]-goal.x,c[1]-goal.y)<Math.hypot(b[0]-goal.x,b[1]-goal.y)?c:b);
+    else { if (Math.random()<.45) continue; ch=pick(nb); }
+    an.tx=ch[0]; an.ty=ch[1];
+  }
+}
+
+// ================= fuoco =================
+function updateFires(){
+  const wet=S.weather==="pioggia"||S.weather==="temporale"||S.weather==="neve";
+  for (let k=S.fires.length-1;k>=0;k--){ const t=S.tiles[S.fires[k]]; t.fuel-=wet?1.5:1; if (t.fuel<=0){ t.fuel=0; S.fires.splice(k,1); } }
+  for (let k=S.burning.length-1;k>=0;k--){
+    const i=S.burning[k], t=S.tiles[i]; t.burn-=wet?3:1;
+    if (t.burn%10===0 && (S.burnCount||0)<45){ const x=i%W, y=(i/W)|0;
+      for (const [dx,dy] of DIRS){ const nx=x+dx, ny=y+dy; if (!inb(nx,ny)) continue; const n=tileAt(nx,ny); if (n.tree>0 && !(n.burn>0) && Math.random()<(wet?.04:.22)){ n.burn=50; S.burning.push(ny*W+nx); S.burnCount=(S.burnCount||0)+1; } } }
+    if (t.burn<=0){ t.burn=0; t.tree=0; t.fruit=0; t.berries=0; t.bush=0; t.scorch=20; S.burning.splice(k,1); }
+  }
+  if (S.burning.length && S.tick%10===0){
+    for (const p of alive()){ if (has(p,"fuoco") || isChild(p)) continue; if (fireNear(tx(p),ty(p),6) && Math.random()<.12){
+      learn(p,"fuoco"); log(`${p.name} ha raccolto un ramo in fiamme dall'incendio e l'ha tenuto acceso: ora sanno cos'è il fuoco.`, "imp"); } }
+  }
+}
+function lightning(godly){
+  const ppl=alive(); let cand=[];
+  for (let i=0;i<W*H;i++){ const t=S.tiles[i]; if (!(t.tree>0) || t.burn>0) continue; const x=i%W, y=(i/W)|0; if (ppl.some(p=>{ const d=Math.hypot(p.x-x,p.y-y); return d<(godly?9:11) && d>2.5; })) cand.push(i); }
+  if (!cand.length) return false;
+  const i=pick(cand), t=S.tiles[i]; t.burn=60; S.burning.push(i); S.burnCount=0; S.flash=1; t.seen=true;
+  log(godly ? "Hai scagliato un fulmine: un albero vicino a loro prende fuoco!" : "Un fulmine colpisce un albero: il bosco prende fuoco!", "imp");
+  return true;
+}
+
+// ================= nuovo giorno =================
+function rollWeather(){
+  const s=season(), r=Math.random();
+  const P=[[.45,.25,.25,.05],[.60,.20,.10,.10],[.35,.30,.30,.05],[.35,.30,.35,0]][s];
+  const kinds=s===3?["sereno","nuvoloso","neve","pioggia"]:["sereno","nuvoloso","pioggia","temporale"];
+  let acc=0; for (let k=0;k<4;k++){ acc+=P[k]; if (r<acc){ S.weather=kinds[k]; break; } }
+  S.lightAt = S.weather==="temporale" ? 20+Math.floor(Math.random()*110) : -1;
+}
+function closeDay(){
+  const d=day()-1;
+  const notes=alive().filter(p=>!isChild(p)||p.age>200).map(p=>`${p.name}: «${eveningLine(p)}»`);
+  const st=S.dstat, sum=[];
+  if (st.cibo) sum.push(`${st.cibo} cose da mangiare raccolte`); if (st.legna) sum.push(`${st.legna} legna`); if (st.pesci) sum.push(`${st.pesci} pesci`); if (st.prede) sum.push(`${st.prede} prede`); if (st.chiacchiere) sum.push(`${st.chiacchiere} chiacchierate`);
+  S.diary.unshift({ d, s:season(d), w:S.weather, ev:S.today, notes, sum:sum.join(" · ") });
+  if (S.diary.length>400) S.diary.length=400;
+  S.today=[]; S.dstat={}; for (const p of S.people) p.learned=[];
+  dirty.diary=true;
+}
+function eveningLine(p){
+  const n=p.needs;
+  if (p.learned.length) return `Oggi ho imparato qualcosa di nuovo: ${DISCBY[p.learned[0]].n.toLowerCase()}.`;
+  if (p.salute<40) return "Mi sento debole, ho bisogno di rimettermi in forze.";
+  if (n.cibo<30) return "Ho fame. Domani devo trovare più cibo.";
+  if (n.acqua<30) return "Avevo così sete oggi…";
+  if (n.calore<40) return "Il freddo mi entra nelle ossa.";
+  if (p.preg) return "Sento il bambino muoversi dentro di me.";
+  if (n.umore>80) return pick(["Che bella giornata.","Mi sento felice qui.","Il mondo è grande e pieno di meraviglie."]);
+  if (n.umore<35) return pick(["Mi sento solo.","Oggi è stata dura.","Vorrei più compagnia."]);
+  return pick(["Domani voglio vedere cosa c'è più in là.","Il tramonto era rosso stasera.","Una giornata come tante, ma siamo vivi.","Chissà cosa scopriremo domani."]);
+}
+function newDay(){
+  closeDay();
+  const d=day(), s=season();
+  if ((d-1)%SEASON_DAYS===0){ log(`Comincia ${s===1?"l'":"la "}${SEASONS[s].toLowerCase()}.${s===3?" Le notti saranno gelide: serviranno fuoco, riparo e scorte.":s===2?" È il momento di fare scorte per l'inverno.":""}`, "imp"); colorCache={}; }
+  rollWeather();
+  if (S.weather==="neve" && !S.firstSnow){ S.firstSnow=true; log("Nevica per la prima volta. Tutto è bianco e silenzioso.", "imp"); }
+  S.snow = S.weather==="neve" ? Math.min(3,S.snow+1) : Math.max(0,S.snow-1);
+  // ricrescita
+  for (const t of S.tiles){
+    if (t.bush && (s===0||s===1) && t.berries<5 && Math.random()<.5) t.berries=(t.berries||0)+1;
+    if (t.tree===2 && (s===1||s===2) && (t.fruit||0)<6 && Math.random()<.35) t.fruit=(t.fruit||0)+1;
+    if (t.tree===3 && s===2 && (t.fruit||0)<6 && Math.random()<.45) t.fruit=(t.fruit||0)+1;
+    if (s===3 && t.berries>1 && Math.random()<.12) t.berries--;
+    if (t.t===T.FOREST && s===2 && !t.mush && Math.random()<.02) t.mush=1+Math.floor(Math.random()*2);
+    if (s===3 && t.mush) t.mush=0;
+    if (t.wild){ if (s===1 && (d-1)%SEASON_DAYS===0) t.grain=3; if (s===3) t.grain=0; }
+    if (t.t===T.SHALLOW && (t.fish||0)<5 && Math.random()<.18) t.fish=(t.fish||0)+1;
+    if ((t.t===T.GRASS||t.t===T.FOREST) && !t.crop && (t.roots||0)<2 && Math.random()<.035) t.roots=(t.roots||0)+1;
+    if (t.scorch){ t.scorch--; if (!t.scorch && t.t===T.FOREST && Math.random()<.3) t.tree=1; }
+    if (t.crop){ if (s===3 && !t.crop.ripe) t.crop=null; else if ((s===0||s===1) && !t.crop.ripe){ t.crop.g+= (S.weather==="pioggia"?2:1); if (t.crop.g>=14) t.crop.ripe=true; } }
+    if (t.store && !has({known:Object.keys(S.disc)},"vasi")){ for (const k of Object.keys(FOOD)) if (t.store[k]>0 && Math.random()<.03) t.store[k]--; }
+  }
+  // animali
+  for (const k in AK){ if (k==="cane") continue; const list=S.animals.filter(a=>a.k===k && !a.tame);
+    if (list.length>=2 && list.length<AK[k].cap && Math.random()<.35){ const m=pick(list); spawnAnimal(k,Math.round(m.x),Math.round(m.y)); }
+    else if (list.length<2 && Math.random()<.08){ const p=randomTileFor(k,10); if (p) spawnAnimal(k,p.x,p.y); } }
+  for (const an of S.animals) if (an.tame && an.k==="capra"){ const o=personById(an.owner); if (o && o.alive){ const st=storeOf(o); if (st) st.latte=(st.latte||0)+1; else addItem(o,"latte",1); } }
+  // persone
+  for (const p of alive()){
+    p.age++;
+    if (p.born && p.age===ADULT){ log(`${p.name} è ${sexW(p,"cresciuto","cresciuta")}: ora è ${sexW(p,"un adulto","un'adulta")} e decide da sé.`, "imp"); for (const id of [...(personById(p.mother)?.known||[]),...(personById(p.father)?.known||[])]) if (!has(p,id) && reqsMet(p,DISCBY[id]) && Math.random()<.6) p.known.push(id); }
+    if (isChild(p) && p.age>120){ const par=[personById(p.mother),personById(p.father)].filter(Boolean); const can=par.flatMap(x=>x.known).filter(id=>!has(p,id)&&reqsMet(p,DISCBY[id])); if (can.length && Math.random()<.12) p.known.push(pick(can)); }
+    if (p.order && p.order.k!=="vai"){ p.order=null; }
+    if (p.preg){ p.preg--; if (p.preg===0) birth(p); }
+    else if (p.sex==="F" && !isChild(p) && p.sleptNear && p.partner){
+      const m=personById(p.partner);
+      if (m && m.alive && (p.rel[m.id]||0)>=55 && p.salute>55 && p.needs.cibo>30 && alive().length<MAX_POP && d-p.lastBirth>40 && Math.random()<.07){
+        p.preg=45; log(`${p.name} aspetta un bambino da ${m.name}!`, "imp");
+      }
+    }
+    p.sleptNear=false;
+  }
+  saveGame();
+  if (S.opts.pauseDawn || runToDawn){ paused=true; runToDawn=false; showBanner(`Alba del giorno ${d}. Leggi il diario, dai gli ordini e poi premi “Avanza di un giorno”.`); }
+  dirty.all();
+}
+function birth(m){
+  const f=personById(m.partner)||personById(m.father); const sex=Math.random()<.5?"M":"F";
+  const pool=(sex==="M"?NAMES_M:NAMES_F).filter(n=>!S.nameUsed.includes(n)); const name=pool.length?pick(pool):(sex==="M"?"Nuovo":"Nuova");
+  S.nameUsed.push(name);
+  const c=newPerson(name,sex,m.x,m.y,{age:0,born:day(),mother:m.id,father:f?.id||0,child:true,home:m.home});
+  m.lastBirth=day(); m.needs.umore=100; if (f) f.needs.umore=100;
+  c.rel[m.id]=70; m.rel[c.id]=80; if (f){ c.rel[f.id]=60; f.rel[c.id]=80; }
+  log(`È ${sex==="M"?"nato":"nata"} ${name}, ${sex==="M"?"figlio":"figlia"} di ${m.name}${f?" e "+f.name:""}!`, "imp");
+}
+
+// ================= ciclo principale =================
+function tick(){
+  if (S.over) return;
+  S.tick++;
+  if (tod()===0) newDay();
+  if (S.lightAt===tod()) lightning(false);
+  for (const p of S.people) if (p.alive) updatePerson(p);
+  if (S.tick%2===0) updateAnimals();
+  updateFires();
+  if (S.tick%4===0) for (const p of S.people) if (p.alive) markSeen(p);
+  if (S.tick%DAY===1) S.people=S.people.filter(p=>p.alive);
+  if (!alive().length && !S.over){ S.over=true; paused=true; showOver(); }
+}
+
+// ================= salvataggio =================
+const SAVE_KEY="terra-zero-v1";
+function saveGame(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
+function loadGame(str){
+  try{ const o=JSON.parse(str); if (!o || o.v!==1 || !o.tiles || o.tiles.length!==W*H) return false; S=o; WD=computeWD(S.tiles); colorCache={}; return true; }catch(e){ return false; }
+}
+
+// ================= disegno =================
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+const nc=document.createElement("canvas"), nctx=nc.getContext("2d");
+let dpr=1, colorCache={};
+const BASE = {
+  [T.DEEP]:["#24557a","#245e86","#24557a","#2a4f6e"], [T.SHALLOW]:["#4d97b5","#55a4c0","#4d93ad","#5d8fa6"],
+  [T.SAND]:["#d8c48c","#e0cb8e","#ccb984","#c4bfa9"], [T.GRASS]:["#6da545","#93ad48","#ad9a48","#8a977b"],
+  [T.FOREST]:["#3f7a35","#527d33","#7c6a32","#5d6c59"], [T.HILL]:["#94946a","#a39d6b","#9b8a5f","#8f8f86"],
+  [T.MOUNT]:["#7b766f","#827c73","#77716a","#aeb1b5"]
+};
+function hexRgb(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+function shade(h,f){ const [r,g,b]=hexRgb(h); const m=v=>clamp(Math.round(v*(1+f)),0,255); return `rgb(${m(r)},${m(g)},${m(b)})`; }
+function tileColors(s){ if (colorCache[s]) return colorCache[s]; const arr=S.tiles.map(t=>shade(BASE[t.t][s],(t.sh-.5)*.14)); colorCache[s]=arr; return arr; }
+function fitZoom(){ const w=cv.clientWidth||800; cam.z=clamp(Math.round(w/(w<600?17:30)),12,34); }
+function resize(){ dpr=Math.min(2,window.devicePixelRatio||1); const w=cv.clientWidth, h=cv.clientHeight; cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); nc.width=cv.width; nc.height=cv.height; }
+function clampCam(vw,vh){ const z=cam.z; const hw=vw/z/2, hh=vh/z/2; cam.x = W>hw*2 ? clamp(cam.x,hw,W-hw) : W/2; cam.y = H>hh*2 ? clamp(cam.y,hh,H-hh) : H/2; }
+
+const TREE_COL = { 1:["#2c5e2a","#2f6a2a","#b0662c",null], 2:["#3c7a33","#3f8135","#c58a2f",null], 3:["#2a5530","#2d5d2e","#9a5a26",null] };
+function drawTile(t,x,y,px,py,z,s,time){
+  const c=z*.5;
+  if (t.crop){ ctx.fillStyle="#6b4a2f"; ctx.fillRect(px+z*.08,py+z*.08,z*.84,z*.84); const g=t.crop.ripe?"#e2c25a":`rgb(${Math.round(90+t.crop.g*8)},${Math.round(150+t.crop.g*3)},70)`; ctx.fillStyle=g; for (let r=0;r<3;r++) ctx.fillRect(px+z*.15,py+z*(.22+r*.25),z*.7,z*.08); }
+  if (t.clay && t.t===T.SAND){ ctx.fillStyle="rgba(168,100,63,.55)"; ctx.beginPath(); ctx.ellipse(px+z*.35,py+z*.65,z*.22,z*.12,0,0,7); ctx.fill(); }
+  if (t.reeds){ ctx.strokeStyle="#a9b35a"; ctx.lineWidth=Math.max(1,z*.05); ctx.beginPath(); for (let k=0;k<3;k++){ const xx=px+z*(.25+k*.22); ctx.moveTo(xx,py+z*.85); ctx.lineTo(xx+z*.04,py+z*.35); } ctx.stroke(); }
+  if (t.fish>0 && z>=12 && t.t===T.SHALLOW){ const ph=(time/900+t.sh*6)%1; ctx.strokeStyle=`rgba(230,245,255,${.5*(1-ph)})`; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(px+c,py+c,z*.1+ph*z*.25,0,7); ctx.stroke(); }
+  if (t.wild && t.grain>0){ ctx.fillStyle="#e2c25a"; for (let k=0;k<3;k++) ctx.fillRect(px+z*(.2+k*.25),py+z*.5,z*.06,z*.3); }
+  else if (t.wild && s<3){ ctx.fillStyle="rgba(170,200,90,.7)"; for (let k=0;k<3;k++) ctx.fillRect(px+z*(.2+k*.25),py+z*.58,z*.05,z*.22); }
+  if (t.stone>0){ ctx.fillStyle="#a8a49b"; ctx.beginPath(); ctx.ellipse(px+z*.66,py+z*.7,z*.15,z*.1,0,0,7); ctx.fill(); ctx.fillStyle="#8b877f"; ctx.beginPath(); ctx.ellipse(px+z*.42,py+z*.78,z*.1,z*.07,0,0,7); ctx.fill(); }
+  if (t.flint>0){ ctx.fillStyle="#3f4a57"; ctx.beginPath(); ctx.moveTo(px+z*.25,py+z*.3); ctx.lineTo(px+z*.4,py+z*.22); ctx.lineTo(px+z*.42,py+z*.4); ctx.closePath(); ctx.fill(); }
+  if (t.mush>0){ ctx.fillStyle="#f2ebe0"; ctx.fillRect(px+z*.3,py+z*.72,z*.05,z*.1); ctx.fillStyle="#c8452f"; ctx.beginPath(); ctx.arc(px+z*.32,py+z*.72,z*.08,Math.PI,0); ctx.fill(); }
+  if (t.bush){ ctx.fillStyle=s===3?"#6b6a55":s===2?"#6d6a32":"#2f5f34"; ctx.beginPath(); ctx.arc(px+z*.32,py+z*.66,z*.22,0,7); ctx.fill();
+    if (t.berries>0){ ctx.fillStyle="#8a3aa6"; for (let k=0;k<Math.min(4,t.berries);k++){ ctx.beginPath(); ctx.arc(px+z*(.22+(k%2)*.2),py+z*(.58+(k>>1)*.14),z*.05,0,7); ctx.fill(); } } }
+  if (t.tree>0){
+    const col=TREE_COL[t.tree][s]; const ox=(t.sh-.5)*z*.2;
+    ctx.fillStyle="#5b4130"; ctx.fillRect(px+c-z*.05+ox,py+z*.5,z*.1,z*.42);
+    if (col){ ctx.fillStyle=col; ctx.beginPath(); ctx.arc(px+c+ox,py+z*.42,z*.4,0,7); ctx.fill(); ctx.fillStyle="rgba(255,255,255,.08)"; ctx.beginPath(); ctx.arc(px+c+ox-z*.12,py+z*.3,z*.16,0,7); ctx.fill(); }
+    else { ctx.strokeStyle="#5b4636"; ctx.lineWidth=Math.max(1,z*.05); ctx.beginPath(); ctx.moveTo(px+c+ox,py+z*.55); ctx.lineTo(px+c+ox-z*.22,py+z*.15); ctx.moveTo(px+c+ox,py+z*.45); ctx.lineTo(px+c+ox+z*.25,py+z*.12); ctx.moveTo(px+c+ox,py+z*.5); ctx.lineTo(px+c+ox,py+z*.08); ctx.stroke(); }
+    if (t.fruit>0){ ctx.fillStyle=t.tree===3?"#7a4a22":"#d83a2a"; for (let k=0;k<Math.min(4,t.fruit);k++){ ctx.beginPath(); ctx.arc(px+c+ox+z*(k%2?.16:-.14),py+z*(.32+(k>>1)*.18),z*.06,0,7); ctx.fill(); } }
+  }
+  if (t.burn>0){ for (let k=0;k<3;k++){ const fl=Math.sin(time/90+k*2+t.sh*9)*.08; ctx.fillStyle=k===0?"rgba(255,120,30,.85)":k===1?"rgba(255,190,60,.8)":"rgba(255,240,170,.8)"; ctx.beginPath(); ctx.ellipse(px+c+(k-1)*z*.15,py+z*(.5-k*.05+fl),z*(.18-k*.03),z*(.32-k*.06),0,0,7); ctx.fill(); } }
+  if (t.struct==="grotta"){ ctx.fillStyle="#1e1a18"; ctx.beginPath(); ctx.moveTo(px+z*.15,py+z*.95); ctx.quadraticCurveTo(px+c,py-z*.05,px+z*.85,py+z*.95); ctx.fill(); }
+  else if (t.struct==="capanna"){ ctx.fillStyle="#8a5a33"; ctx.beginPath(); ctx.moveTo(px+z*.05,py+z*.95); ctx.lineTo(px+c,py+z*.08); ctx.lineTo(px+z*.95,py+z*.95); ctx.closePath(); ctx.fill(); ctx.strokeStyle="#5e3b20"; ctx.lineWidth=Math.max(1,z*.04); ctx.stroke(); ctx.fillStyle="#2b1a0e"; ctx.beginPath(); ctx.moveTo(px+z*.38,py+z*.95); ctx.lineTo(px+c,py+z*.55); ctx.lineTo(px+z*.62,py+z*.95); ctx.fill(); }
+  else if (t.struct==="casa"){ ctx.fillStyle="#b9946a"; ctx.fillRect(px+z*.12,py+z*.42,z*.76,z*.52); ctx.fillStyle="#6e4b2e"; ctx.beginPath(); ctx.moveTo(px+z*.02,py+z*.46); ctx.lineTo(px+c,py+z*.06); ctx.lineTo(px+z*.98,py+z*.46); ctx.fill(); ctx.fillStyle="#2b1a0e"; ctx.fillRect(px+z*.42,py+z*.62,z*.18,z*.32); }
+  else if (t.struct==="fuoco"){ ctx.strokeStyle="#8b877f"; ctx.lineWidth=Math.max(1,z*.08); ctx.beginPath(); ctx.arc(px+c,py+z*.62,z*.26,0,7); ctx.stroke(); ctx.fillStyle="#3a2e26"; ctx.fillRect(px+z*.3,py+z*.6,z*.4,z*.08);
+    if (t.fuel>0){ for (let k=0;k<3;k++){ const fl=Math.sin(time/80+k*2.1)*.06; ctx.fillStyle=k===0?"#ff7a1e":k===1?"#ffc43c":"#fff0b0"; ctx.beginPath(); ctx.ellipse(px+c,py+z*(.5-k*.04+fl),z*(.18-k*.05),z*(.3-k*.08),0,0,7); ctx.fill(); } } }
+  if (t.paint>0 && z>=10){ ctx.fillStyle="#d9893a"; for (let k=0;k<Math.min(3,t.paint);k++) ctx.fillRect(px+z*(.2+k*.2),py+z*.18,z*.08,z*.08); }
+}
+function draw(time){
+  const vw=cv.clientWidth, vh=cv.clientHeight; if (!vw||!vh) return;
+  if (cv.width!==Math.round(vw*dpr) || cv.height!==Math.round(vh*dpr)) resize();
+  if (cam.follow){ const p=personById(cam.follow); if (p && p.alive){ cam.x+=(p.x+.5-cam.x)*.12; cam.y+=(p.y+.5-cam.y)*.12; } }
+  clampCam(vw,vh);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const z=cam.z, ox=vw/2-cam.x*z, oy=vh/2-cam.y*z, s=season(), reveal=S.opts.reveal;
+  const x0=Math.max(0,Math.floor(-ox/z)-1), x1=Math.min(W-1,Math.ceil((vw-ox)/z)), y0=Math.max(0,Math.floor(-oy/z)-1), y1=Math.min(H-1,Math.ceil((vh-oy)/z));
+  ctx.fillStyle="#0b1210"; ctx.fillRect(0,0,vw,vh);
+  const cols=tileColors(s);
+  for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++){
+    const i=y*W+x, t=S.tiles[i], px=ox+x*z, py=oy+y*z;
+    if (!t.seen && !reveal){ ctx.fillStyle=(x+y)%2?"#101815":"#0e1613"; ctx.fillRect(px,py,z+.6,z+.6); continue; }
+    ctx.fillStyle=cols[i]; ctx.fillRect(px,py,z+.6,z+.6);
+    if (S.snow>0 && !isWater(t)){ ctx.fillStyle=`rgba(236,242,246,${.2*S.snow})`; ctx.fillRect(px,py,z+.6,z+.6); }
+    if (t.scorch){ ctx.fillStyle="rgba(40,32,28,.45)"; ctx.fillRect(px,py,z+.6,z+.6); }
+  }
+  if (z>=6) for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++){ const t=S.tiles[y*W+x]; if (t.seen||reveal) drawTile(t,x,y,ox+x*z,oy+y*z,z,s,time); }
+  // bordo della nebbia
+  if (!reveal){ ctx.fillStyle="rgba(11,18,16,.5)"; for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++){ const t=S.tiles[y*W+x]; if (!t.seen) continue; let edge=false; for (const [dx,dy] of DIRS.slice(0,4)){ const nx=x+dx, ny=y+dy; if (inb(nx,ny) && !tileAt(nx,ny).seen) edge=true; } if (edge) ctx.fillRect(ox+x*z,oy+y*z,z+.6,z+.6); } }
+  // animali
+  for (const an of S.animals){
+    const t=tileAt(Math.round(an.x),Math.round(an.y)); if (!t.seen && !reveal) continue;
+    const px=ox+(an.x+.5)*z, py=oy+(an.y+.5)*z; if (px<-z||py<-z||px>vw+z||py>vh+z) continue;
+    const def=AK[an.k], r=Math.max(2,def.r*z);
+    ctx.fillStyle="rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(px,py+r*.8,r,r*.4,0,0,7); ctx.fill();
+    ctx.fillStyle=def.col; ctx.beginPath(); ctx.ellipse(px,py,r*1.25,r*.85,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+r*1.1,py-r*.45,r*.55,0,7); ctx.fill();
+    if (an.k==="cervo" && z>=10){ ctx.strokeStyle="#6a4426"; ctx.lineWidth=Math.max(1,z*.04); ctx.beginPath(); ctx.moveTo(px+r*1.1,py-r*.9); ctx.lineTo(px+r*.8,py-r*1.8); ctx.moveTo(px+r*1.3,py-r*.9); ctx.lineTo(px+r*1.6,py-r*1.8); ctx.stroke(); }
+    if (an.k==="coniglio" && z>=10){ ctx.fillRect(px+r*1.0,py-r*1.6,r*.25,r*.9); }
+    if (an.k==="lupo" && z>=10){ ctx.fillStyle="#5c6168"; ctx.beginPath(); ctx.moveTo(px+r*.9,py-r*.8); ctx.lineTo(px+r*1.1,py-r*1.5); ctx.lineTo(px+r*1.3,py-r*.8); ctx.fill(); }
+    if (an.tame && z>=10){ ctx.fillStyle="#e3a14c"; ctx.beginPath(); ctx.arc(px-r*1.2,py-r*.8,Math.max(1.5,z*.06),0,7); ctx.fill(); }
+  }
+  // persone
+  const ppl=alive();
+  for (const p of ppl){
+    const px=ox+(p.x+.5)*z, py=oy+(p.y+.5)*z, r=z*(isChild(p)?.22:.32);
+    const sl=p.task && p.task.k==="dormire" && p.task.phase==="work";
+    ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(px,py+r*.9,r*1.1,r*.45,0,0,7); ctx.fill();
+    if (p.id===selected){ ctx.strokeStyle="#fff6dc"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(px,py,r+4+Math.sin(time/250)*1.5,0,7); ctx.stroke(); }
+    ctx.fillStyle=p.col; ctx.beginPath(); if (sl) ctx.ellipse(px,py+r*.2,r*1.15,r*.7,0,0,7); else ctx.arc(px,py,r,0,7); ctx.fill();
+    ctx.strokeStyle="#13201b"; ctx.lineWidth=Math.max(1,z*.06); ctx.stroke();
+    if (p.clothes){ ctx.strokeStyle="#8a5a33"; ctx.lineWidth=Math.max(1.5,z*.08); ctx.beginPath(); ctx.arc(px,py,r*.62,.2,Math.PI-.2); ctx.stroke(); }
+    if (p.sex==="F" && !sl){ ctx.fillStyle="#13201b"; ctx.beginPath(); ctx.arc(px,py-r*.75,r*.35,Math.PI,0); ctx.fill(); }
+  }
+  // notte
+  const h=hour(); let dark = h>=21||h<5 ? .62 : h>=18 ? (h-18)/3*.62 : h<6 ? .62-(h-5)*.3 : h<7 ? .32*(7-h) : 0;
+  if (S.weather==="temporale"||S.weather==="pioggia") dark=Math.max(dark,.18); else if (S.weather==="neve"||S.weather==="nuvoloso") dark=Math.max(dark,.08);
+  if (dark>0){
+    nctx.setTransform(dpr,0,0,dpr,0,0); nctx.globalCompositeOperation="source-over"; nctx.clearRect(0,0,vw,vh);
+    nctx.fillStyle=`rgba(6,12,34,${dark})`; nctx.fillRect(0,0,vw,vh);
+    nctx.globalCompositeOperation="destination-out";
+    const hole=(x,y,r,a)=>{ const g=nctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,`rgba(0,0,0,${a})`); g.addColorStop(1,"rgba(0,0,0,0)"); nctx.fillStyle=g; nctx.fillRect(x-r,y-r,r*2,r*2); };
+    for (const i of S.fires.concat(S.burning)){ const fx=ox+(i%W+.5)*z, fy=oy+(((i/W)|0)+.5)*z; hole(fx,fy,z*(5+Math.sin(time/120)*.3),1); }
+    for (const p of ppl) hole(ox+(p.x+.5)*z,oy+(p.y+.5)*z,z*1.4,.55);
+    ctx.drawImage(nc,0,0,vw,vh);
+    ctx.globalCompositeOperation="lighter";
+    for (const i of S.fires.concat(S.burning)){ const fx=ox+(i%W+.5)*z, fy=oy+(((i/W)|0)+.5)*z, r=z*3.5; const g=ctx.createRadialGradient(fx,fy,0,fx,fy,r); g.addColorStop(0,`rgba(255,150,60,${.28*dark+.05})`); g.addColorStop(1,"rgba(255,150,60,0)"); ctx.fillStyle=g; ctx.fillRect(fx-r,fy-r,r*2,r*2); }
+    ctx.globalCompositeOperation="source-over";
+  }
+  // meteo
+  if (S.weather==="pioggia"||S.weather==="temporale"){ ctx.strokeStyle="rgba(190,210,235,.45)"; ctx.lineWidth=1; ctx.beginPath(); for (let k=0;k<90;k++){ const x=Math.random()*vw, y=Math.random()*vh; ctx.moveTo(x,y); ctx.lineTo(x-3,y+10); } ctx.stroke(); }
+  if (S.weather==="neve"){ ctx.fillStyle="rgba(255,255,255,.8)"; for (let k=0;k<70;k++){ const x=(k*97+time*.02*(k%5+1))%vw, y=(k*53+time*.03*(k%3+1))%vh; ctx.fillRect(x,y,2,2); } }
+  if (S.flash>0){ ctx.fillStyle=`rgba(255,255,255,${S.flash*.5})`; ctx.fillRect(0,0,vw,vh); S.flash=Math.max(0,S.flash-.05); }
+  // etichette
+  ctx.textAlign="center"; ctx.textBaseline="bottom";
+  const fs=clamp(z*.5,10,13);
+  for (const p of ppl){
+    const px=ox+(p.x+.5)*z, py=oy+(p.y+.5)*z, r=z*(isChild(p)?.22:.32);
+    ctx.font=`700 ${fs}px "Atkinson Hyperlegible",system-ui,sans-serif`;
+    const label=p.name; const w=ctx.measureText(label).width+8;
+    ctx.fillStyle="rgba(9,15,13,.72)"; ctx.fillRect(px-w/2,py-r-fs-6,w,fs+4);
+    ctx.fillStyle="#efe9da"; ctx.fillText(label,px,py-r-3);
+    const ic=p.task?ICON[p.task.k]:""; const sl=p.task&&p.task.k==="dormire"&&p.task.phase==="work";
+    if (z>=13 && (ic||sl)){ ctx.font=`${fs+1}px system-ui,sans-serif`; ctx.fillText(sl?"💤":ic,px+w/2+fs*.6,py-r-2); }
+  }
+  if (pendingGo){ ctx.fillStyle="rgba(227,161,76,.12)"; ctx.fillRect(0,0,vw,vh); }
+}
+
+// ================= input mappa =================
+let drag=null;
+cv.addEventListener("pointerdown",e=>{ cv.setPointerCapture(e.pointerId); drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false}; });
+cv.addEventListener("pointermove",e=>{ if (!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; if (Math.abs(dx)+Math.abs(dy)>6) drag.moved=true; if (drag.moved){ cam.follow=null; cam.x=drag.cx-dx/cam.z; cam.y=drag.cy-dy/cam.z; cv.style.cursor="grabbing"; } });
+cv.addEventListener("pointerup",e=>{ if (!drag) return; const moved=drag.moved; drag=null; cv.style.cursor=""; if (!moved) tapAt(e); });
+cv.addEventListener("pointercancel",()=>{ drag=null; });
+cv.addEventListener("wheel",e=>{ e.preventDefault(); zoomBy(e.deltaY<0?1.15:1/1.15); },{passive:false});
+function zoomBy(f){ cam.z=clamp(cam.z*f,8,48); }
+function tapAt(e){
+  const r=cv.getBoundingClientRect(), vw=cv.clientWidth, vh=cv.clientHeight, z=cam.z;
+  const wx=(e.clientX-r.left-vw/2)/z+cam.x-.5, wy=(e.clientY-r.top-vh/2)/z+cam.y-.5;
+  const gx=Math.round(wx), gy=Math.round(wy);
+  if (pendingGo){
+    const p=personById(pendingGo); pendingGo=null; cv.classList.remove("picking"); hideBanner();
+    if (!inb(gx,gy) || !passableT(tileAt(gx,gy))){ toast("Lì non si può arrivare a piedi. Scegli un punto sulla terraferma.","bad"); return; }
+    if (p && p.alive){ p.order={k:"vai",x:gx,y:gy}; p.task=null; log(`Hai chiesto a ${p.name} di andare in un punto preciso della mappa.`); dirty.detail=true; }
+    return;
+  }
+  let best=null, bd=.9; for (const p of alive()){ const d=Math.hypot(p.x-wx,p.y-wy); if (d<bd){ bd=d; best=p; } }
+  if (best){ select(best.id); return; }
+  showTileInfo(gx,gy);
+}
+function showTileInfo(x,y){
+  const el=document.getElementById("tileinfo");
+  if (!inb(x,y)){ el.hidden=true; return; }
+  const t=tileAt(x,y);
+  if (!t.seen && !S.opts.reveal){ el.innerHTML="<b>Terra inesplorata</b>Nessuno è ancora stato qui."; el.hidden=false; clearTimeout(el._t); el._t=setTimeout(()=>el.hidden=true,3500); return; }
+  const f=[];
+  if (t.tree) f.push(`${t.tree===2?"Melo":t.tree===3?"Castagno":"Quercia"}${t.fruit>0?` con ${t.fruit} ${t.tree===3?"castagne":"mele"}`:""}`);
+  if (t.bush) f.push(`Cespuglio di more${t.berries>0?` (${t.berries})`:" (spoglio)"}`);
+  if (t.wild) f.push(t.grain>0?`Farro selvatico maturo (${t.grain})`:"Farro selvatico");
+  if (t.mush) f.push("Funghi"); if (t.stone>0) f.push(`Pietre (${t.stone})`); if (t.flint>0) f.push(`Selce (${t.flint})`);
+  if (t.clay) f.push("Argilla"); if (t.reeds) f.push("Canne"); if (t.fish>0) f.push(`Pesci (${t.fish})`); if (t.roots>0) f.push("Radici sotto terra");
+  if (t.crop) f.push(t.crop.ripe?"Campo di farro maturo":`Campo seminato (${Math.round(t.crop.g/14*100)}%)`);
+  if (t.struct==="grotta") f.push("Grotta"); if (t.struct==="capanna") f.push("Capanna"); if (t.struct==="casa") f.push("Casa di pietra"); if (t.struct==="fuoco") f.push(t.fuel>0?"Fuoco acceso":"Focolare spento");
+  if (t.store && foodCount(t.store)) f.push(`Scorte: ${foodCount(t.store)} cibi`); if (t.paint) f.push(`${t.paint} dipinti sulla parete`); if (t.burn>0) f.push("Sta bruciando!");
+  for (const an of S.animals) if (Math.round(an.x)===x && Math.round(an.y)===y) f.push(AK[an.k].n+(an.tame?" (addomesticato)":""));
+  el.innerHTML=`<b>${TNAME[t.t]}</b>${f.length?"<ul>"+f.map(s=>`<li>${s}</li>`).join("")+"</ul>":"Niente di particolare."}`;
+  el.hidden=false; clearTimeout(el._t); el._t=setTimeout(()=>el.hidden=true,4500);
+}
+document.getElementById("zin").onclick=()=>zoomBy(1.25);
+document.getElementById("zout").onclick=()=>zoomBy(1/1.25);
+document.getElementById("center").onclick=()=>{ const p=personById(selected)||alive()[0]; if (p){ cam.follow=p.id; } };
+
+// ================= interfaccia =================
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dirty={ people:true, detail:true, diary:true, disc:true, powers:true, all(){ this.people=this.detail=this.diary=this.disc=this.powers=true; } };
+let tab="people";
+try{ tab=localStorage.getItem("terra-zero-tab")||"people"; }catch(e){}
+
+function toast(text,kind){ const box=$("toasts"); if ([...box.children].some(c=>c.textContent===text)) return; const el=document.createElement("div"); el.className="toast "+(kind||""); el.textContent=text; box.appendChild(el); while (box.children.length>3) box.firstChild.remove(); setTimeout(()=>el.remove(),6000); }
+function showBanner(html){ const b=$("banner"); b.innerHTML=html; b.hidden=false; }
+function hideBanner(){ $("banner").hidden=true; }
+function showOver(){ const o=$("over"); o.innerHTML=`<h2>La storia di Terra Zero si è fermata</h2><p>Nessuno è sopravvissuto. Il mondo è durato ${day()} giorni e ha visto ${Object.keys(S.disc).length} scoperte.</p><button class="btn primary" id="overNew">Ricomincia con un nuovo mondo</button>`; o.hidden=false; $("overNew").onclick=()=>{ o.hidden=true; newGame("Adamo","Eva"); }; }
+
+function select(id){ selected=id; cam.follow=id; dirty.detail=true; dirty.people=true; if (tab!=="people") setTab("people"); }
+function setTab(t){ tab=t; try{ localStorage.setItem("terra-zero-tab",t); }catch(e){} for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected",b.dataset.tab===t); for (const k of ["people","diary","disc","powers"]) $("tab-"+k).hidden=k!==t; dirty.all(); }
+document.querySelector(".tabs").onclick=e=>{ const b=e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab); };
+
+function actText(p){
+  const k=p.task; if (!k) return "Ci pensa su";
+  const pair=ACT[k.k]||["…","…"]; let s=k.phase==="go"?pair[0]:pair[1];
+  if (k.fol && k.fol.t==="p"){ const o=personById(k.fol.id); s=s.replace("{p}",o?o.name:"qualcuno"); }
+  if (k.k==="ascolta"){ const o=personById(k.with); if (o) s=`Chiacchiera con ${o.name}`; }
+  if (k.k==="caccia" && k.fol){ const an=animalById(k.fol.id); if (an) s+=` (${AK[an.k].n.toLowerCase()})`; }
+  return s;
+}
+function ageText(p){ if (isChild(p)) return `${sexW(p,"bambino","bambina")} · ${p.age} giorni`; if (p.born) return `${sexW(p,"nato","nata")} il giorno ${p.born}`; return `${Math.floor(p.age/YEAR_DAYS)} anni`; }
+const NEEDS=[["cibo","Cibo"],["acqua","Acqua"],["energia","Energia"],["calore","Calore"],["umore","Umore"]];
+const barCol=v=>v<25?"var(--bad)":v<50?"var(--warn)":"var(--good)";
+
+function renderPeople(){
+  const ppl=alive();
+  $("plist").innerHTML=ppl.map(p=>`<button class="pcard" data-pid="${p.id}" aria-current="${p.id===selected}">
+    <span class="dot" style="--c:${p.col}"></span>
+    <span class="pname">${esc(p.name)} <small>${p.sex==="M"?"♂":"♀"} ${ageText(p)}</small></span>
+    <span class="minibars" data-mb="${p.id}">${NEEDS.map(()=>"<i></i>").join("")}<i></i></span>
+    <span class="pact" data-act="${p.id}"></span></button>`).join("") || `<p class="hint">Non c'è più nessuno.</p>`;
+}
+function updatePeople(){
+  for (const p of alive()){
+    const a=document.querySelector(`[data-act="${p.id}"]`); if (a) a.textContent=actText(p)+(p.order?" · ordine: "+ORDERS.find(o=>o.k===p.order.k).n.toLowerCase().replace("…",""):"");
+    const mb=document.querySelector(`[data-mb="${p.id}"]`); if (mb){ const vals=[...NEEDS.map(([k])=>p.needs[k]),p.salute]; [...mb.children].forEach((el,i)=>{ el.style.setProperty("--v",vals[i]+"%"); el.style.setProperty("--bc",barCol(vals[i])); }); }
+  }
+}
+function renderDetail(){
+  const p=personById(selected); const el=$("detail");
+  if (!p || !p.alive){ el.innerHTML=`<p class="hint">Tocca una persona sulla mappa o nell'elenco per vedere cosa pensa e darle un ordine.</p>`; return; }
+  const mate=personById(p.partner); const par=[personById(p.mother),personById(p.father)].filter(Boolean);
+  const meta=[p.sex==="M"?"♂ uomo":"♀ donna", ageText(p)]; if (mate && mate.alive) meta.push(`compagn${sexW(p,"o","a")} di ${mate.name}`); if (par.length) meta.push(`${sexW(p,"figlio","figlia")} di ${par.map(x=>x.name).join(" e ")}`);
+  el.innerHTML=`<div class="detail">
+    <div class="dhead"><span class="dot" style="--c:${p.col}"></span><div><h2>${esc(p.name)}</h2><p class="meta">${meta.join(" · ")}</p></div><button class="btn" id="followBtn">Segui</button></div>
+    <p class="thought" data-f="thought"></p>
+    <div class="doing"><span>Ora:</span> <b data-f="act"></b></div>
+    <div class="bars">${NEEDS.map(([k,l])=>`<span>${l}</span><span class="bar"><i data-b="${k}"></i></span><span class="num" data-n="${k}"></span>`).join("")}<span>Salute</span><span class="bar"><i data-b="salute"></i></span><span class="num" data-n="salute"></span></div>
+    <div><h3>Dai un ordine per oggi</h3><div class="ogrid" style="margin-top:6px">${ORDERS.map(o=>`<button data-order="${o.k}" aria-pressed="false">${o.n}</button>`).join("")}<button data-order="" aria-pressed="false">Lascia decidere</button></div>
+    <p class="hint" style="margin-top:6px">Un ordine vale fino all'alba. Se ha troppa fame, sete o freddo, prima pensa a sopravvivere.</p></div>
+    <div><h3>Porta con sé</h3><div class="chips" data-f="inv" style="margin-top:6px"></div></div>
+    <div><h3>Sa fare</h3><div class="chips" data-f="known" style="margin-top:6px"></div></div>
+    <div><h3>Carattere</h3><div class="traits" style="margin-top:6px">${[["cur","Curiosità"],["cor","Coraggio"],["soc","Socievolezza"],["lab","Laboriosità"]].map(([k,l])=>`<span>${l}</span><span class="bar"><i style="width:${Math.round(p.traits[k]*100)}%"></i></span>`).join("")}</div></div>
+  </div>`;
+  $("followBtn").onclick=()=>{ cam.follow=p.id; };
+  el._sig={};
+}
+function setIf(el,key,val,html){ if (!el) return; if (el._v!==val){ el._v=val; if (html) el.innerHTML=val; else el.textContent=val; } }
+function updateDetail(){
+  const p=personById(selected); const el=$("detail"); if (!p || !p.alive) return;
+  setIf(el.querySelector('[data-f="thought"]'),"t","«"+p.thought+"»");
+  setIf(el.querySelector('[data-f="act"]'),"a",actText(p));
+  for (const [k] of [...NEEDS,["salute"]]){ const v=Math.round(k==="salute"?p.salute:p.needs[k]); const b=el.querySelector(`[data-b="${k}"]`); if (b){ b.style.width=v+"%"; b.style.background=barCol(v); } setIf(el.querySelector(`[data-n="${k}"]`),"n",String(v)); }
+  const inv=Object.entries(p.inv).filter(([,v])=>v>0).map(([k,v])=>`<span class="chip">${v} ${ITEM[k]||k}</span>`).join("")+(p.clothes?`<span class="chip">vestiti di pelle</span>`:"");
+  setIf(el.querySelector('[data-f="inv"]'),"i",inv||`<span class="chip none">mani vuote</span>`,true);
+  const kn=p.known.map(id=>`<span class="chip k">${DISCBY[id].n}</span>`).join("");
+  setIf(el.querySelector('[data-f="known"]'),"k",kn||`<span class="chip none">ancora niente: solo le mani</span>`,true);
+  for (const b of el.querySelectorAll("[data-order]")) b.setAttribute("aria-pressed", String((p.order?p.order.k:"")===b.dataset.order && (b.dataset.order!=="" || !p.order)));
+}
+$("tab-people").addEventListener("click",e=>{
+  const c=e.target.closest("[data-pid]"); if (c){ select(+c.dataset.pid); return; }
+  const o=e.target.closest("[data-order]"); if (!o) return;
+  const p=personById(selected); if (!p||!p.alive) return;
+  const k=o.dataset.order;
+  if (!k){ p.order=null; p.task=null; log(`Hai lasciato ${p.name} liber${sexW(p,"o","a")} di decidere.`); return; }
+  if (k==="vai"){ pendingGo=p.id; cv.classList.add("picking"); showBanner(`Tocca la mappa nel punto in cui vuoi che vada ${esc(p.name)}. <button id="cancelGo">Annulla</button>`); $("cancelGo").onclick=()=>{ pendingGo=null; cv.classList.remove("picking"); hideBanner(); }; return; }
+  p.order={k}; p.task=null; log(`Hai chiesto a ${p.name} di ${ORDER_VERB[k]}.`);
+  const known={costruisci:"capanna",fuoco:"fuoco"}[k];
+  if (known && !has(p,known) && !(k==="costruisci" && has(p,"casa"))) p.thought = k==="fuoco" ? "Il fuoco? Non so come si fa… ma posso provarci." : "Un riparo? Non so ancora come si costruisce… proverò qualcosa.";
+});
+
+function renderDiary(){
+  const today=`<div class="entry today"><h4>Oggi · giorno ${day()}<small>${SEASONS[season()]} · ${WEATHER[S.weather].n}</small></h4><ul>${S.today.slice().reverse().map(e=>`<li class="ev-${e.k}"><time>${e.h}</time><span>${esc(e.x)}</span></li>`).join("")||`<li><time></time><span class="hint">La giornata è appena cominciata.</span></li>`}</ul></div>`;
+  const past=S.diary.slice(0,120).map(en=>`<div class="entry"><h4>Giorno ${en.d}<small>${SEASONS[en.s]} · ${WEATHER[en.w].n}</small></h4>
+    <ul>${en.ev.map(e=>`<li class="ev-${e.k}"><time>${e.h}</time><span>${esc(e.x)}</span></li>`).join("")||`<li><time></time><span class="hint">Una giornata tranquilla.</span></li>`}</ul>
+    ${en.sum?`<p class="sum">${esc(en.sum)}</p>`:""}${en.notes.length?`<div class="notes">${en.notes.map(n=>`<span>${esc(n)}</span>`).join("")}</div>`:""}</div>`).join("");
+  $("tab-diary").innerHTML=`<p class="hint">Ogni sera i pensieri di tutti finiscono qui. Le giornate più recenti sono in alto.</p>`+today+past;
+}
+function renderDisc(){
+  const ppl=alive().filter(p=>!isChild(p));
+  const items=DISC.map(d=>{
+    const rec=S.disc[d.id];
+    if (rec){ const who=alive().filter(p=>has(p,d.id)).map(p=>p.name); return `<div class="disc done"><b>${d.n}</b><span class="st">Scoperta</span><p>${d.d}</p><p>Prima volta: ${esc(rec.by)}, giorno ${rec.day}.${who.length?" La sanno fare: "+esc(who.join(", "))+".":""}</p></div>`; }
+    const ready=ppl.some(p=>reqsMet(p,d));
+    if (d.special) return `<div class="disc ${S.words.length?"open":"lock"}"><b>${d.n}</b><span class="st">${S.words.length}/12 parole</span><p>${d.d} Nasce stando insieme: ogni chiacchierata può inventare una parola.</p></div>`;
+    if (!ready){ const miss=d.req.filter(r=>!S.disc[r]).map(r=>DISCBY[r].n); return `<div class="disc lock"><b>${d.n}</b><span class="st">Bloccata</span><p>${miss.length?"Serve prima: "+miss.join(", ")+".":"Qualcuno deve prima imparare ciò che serve."}</p></div>`; }
+    const insp=inspired(d.id);
+    return `<div class="disc open"><b>${d.n}</b><span class="st">Possibile</span><p>${hintFor(d)}</p><div class="act"><button data-insp="${d.id}" ${S.inspire&&day()<=S.inspire.until?"disabled":""}>${insp?"Idea sussurrata":"Sussurra l'idea"}</button>${insp?`<span class="hint">ci penseranno fino al giorno ${S.inspire.until}</span>`:""}</div></div>`;
+  }).join("");
+  const words=S.words.length?`<div class="words">${S.words.map(w=>`<span class="chip"><b>${esc(w.w)}</b> = ${esc(w.c)}</span>`).join("")}</div>`:`<p class="hint">Nessuna parola ancora: per ora si capiscono a gesti.</p>`;
+  $("tab-disc").innerHTML=`<p class="hint">Le scoperte nascono dall'esperienza: più toccano pietre, rami e animali, più è probabile un'intuizione. Puoi sussurrare un'idea a tutti, una alla volta.</p><div class="dl">${items}</div><h3>Il loro vocabolario</h3>${words}`;
+}
+function hintFor(d){
+  const h={selce:"Nasce raccogliendo e battendo pietre.",bastone:"Nasce maneggiando rami.",fibre:"Nasce raccogliendo erba, bacche e canne.",fuoco:"Nasce battendo la selce, o guardando un incendio da vicino.",lancia:"Combinando selce e bastone, sperimentando.",cesto:"Intrecciando fibre mentre raccolgono.",capanna:"Sperimentando con rami e fibre.",cottura:"Mangiando vicino a un fuoco acceso.",pesca:"Provando a pescare con la lancia.",vestiti:"Sperimentando con una pelle di animale.",vasi:"Dopo aver giocato con l'argilla vicino all'acqua.",agricoltura:"Raccogliendo e mangiando tanti frutti e semi.",arco:"Cacciando spesso con la lancia.",medicina:"Raccogliendo a lungo erbe e funghi.",addomesticamento:"Cacciando e vivendo vicino agli animali.",musica:"Stando insieme attorno al fuoco.",pittura:"Stando insieme e sperimentando col carbone.",casa:"Sperimentando con capanna e argilla cotta.",pane:"Mangiando farro vicino al fuoco."}[d.id];
+  return h||d.d;
+}
+$("tab-disc").addEventListener("click",e=>{ const b=e.target.closest("[data-insp]"); if (!b||b.disabled) return; const d=DISCBY[b.dataset.insp]; S.inspire={id:d.id,until:day()+2}; log(`Hai sussurrato un'idea nei loro sogni: ${d.n.toLowerCase()}.`,"imp"); dirty.disc=true; });
+
+const POWERS=[
+  {k:"pioggia", n:"Pioggia", d:"Fai piovere oggi: meno sete, ma più freddo.", cd:2, run(){ S.weather="pioggia"; S.lightAt=-1; log("Hai chiamato la pioggia sul mondo.","imp"); return true; }},
+  {k:"sole", n:"Bel tempo", d:"Spazza via nuvole e neve.", cd:2, run(){ S.weather="sereno"; S.lightAt=-1; log("Hai aperto il cielo: torna il sole.","imp"); return true; }},
+  {k:"fulmine", n:"Fulmine", d:"Colpisci un albero vicino a loro: un incendio può insegnare il fuoco.", cd:3, run(){ return lightning(true) || (toast("Non c'è nessun albero adatto vicino a loro.","bad"),false); }},
+  {k:"abbondanza", n:"Abbondanza", d:"Ogni cespuglio e albero da frutto visto si carica di cibo.", cd:6, run(){ for (const t of S.tiles){ if (!t.seen) continue; if (t.bush) t.berries=5; if (t.tree===2||t.tree===3) t.fruit=5; } log("Hai fatto maturare in una notte tutti i frutti del mondo conosciuto.","imp"); return true; }},
+  {k:"branco", n:"Branco", d:"Fai arrivare cervi e conigli vicino a loro.", cd:4, run(){ const c=alive()[0]; if (!c) return false; let n=0; for (let k=0;k<6;k++){ const r=bfs(tx(c),ty(c),(t,x,y,d)=>d>=4 && (t.t===T.GRASS||t.t===T.FOREST) && Math.random()<.1,12); if (r){ spawnAnimal(k%2?"coniglio":"cervo",r.x,r.y); n++; } } log("Un branco di animali è arrivato nella valle.","imp"); return n>0; }},
+  {k:"viandanti", n:"Viandanti", d:"Due sconosciuti arrivano da lontano. Nuove amicizie, nuove famiglie.", cd:15, run(){ return wanderers(); }}
+];
+function wanderers(){
+  if (alive().length>MAX_POP-2){ toast("Il mondo è già affollato.","bad"); return false; }
+  const c=alive()[0]; if (!c) return false;
+  const r=bfs(tx(c),ty(c),(t,x,y,d)=>d>=12 && t.t!==T.SHALLOW && Math.random()<.08,30,true); if (!r) return false;
+  const nm=NAMES_M.filter(n=>!S.nameUsed.includes(n)), nf=NAMES_F.filter(n=>!S.nameUsed.includes(n));
+  const m=pick(nm)||"Straniero", f=pick(nf)||"Straniera"; S.nameUsed.push(m,f);
+  const basic=["selce","bastone","fibre"].filter(()=>Math.random()<.5);
+  newPerson(m,"M",r.x,r.y,{age:(17+Math.floor(Math.random()*8))*YEAR_DAYS,known:basic});
+  let bx=r.x, by=r.y; for (const [dx,dy] of DIRS){ if (inb(r.x+dx,r.y+dy) && passableT(tileAt(r.x+dx,r.y+dy))){ bx=r.x+dx; by=r.y+dy; break; } }
+  newPerson(f,"F",bx,by,{age:(17+Math.floor(Math.random()*8))*YEAR_DAYS,known:basic});
+  for (const p of S.people.slice(-2)) for (const q of S.people.slice(-2)) if (p!==q) p.rel[q.id]=25;
+  log(`Due viandanti, ${m} e ${f}, sono comparsi all'orizzonte.`,"imp"); dirty.people=true; return true;
+}
+function renderPowers(){
+  const d=day();
+  $("tab-powers").innerHTML=`<p class="hint">Sei la forza della natura di questo mondo. Ogni potere ha bisogno di qualche giorno per ricaricarsi.</p>
+  <div class="powers">${POWERS.map(p=>{ const last=S.powers[p.k]; const ready=last==null||d-last>=p.cd; return `<div class="power"><b>${p.n}</b><button class="btn" data-pow="${p.k}" ${ready?"":"disabled"}>${ready?"Usa":"Dal giorno "+(last+p.cd)}</button><p>${p.d}</p></div>`; }).join("")}</div>
+  <h3>Opzioni</h3>
+  <label class="tog"><input type="checkbox" id="optReveal" ${S.opts.reveal?"checked":""}> Mostra tutto il mondo, anche le zone inesplorate</label>
+  <h3>Nuovo mondo</h3>
+  <p class="hint">Genera una nuova terra con altri due abitanti. La partita attuale verrà persa.</p>
+  <div class="row2"><label class="field">Lui<input id="nmM" value="Adamo" maxlength="14"></label><label class="field">Lei<input id="nmF" value="Eva" maxlength="14"></label></div>
+  <button class="btn" id="newWorld">Crea un nuovo mondo</button>
+  <p class="hint">Mondo n° ${S.seed} · la partita si salva da sola ogni alba in questo browser.</p>`;
+}
+$("tab-powers").addEventListener("click",e=>{
+  const b=e.target.closest("[data-pow]");
+  if (b && !b.disabled){ const p=POWERS.find(x=>x.k===b.dataset.pow); if (p.run()){ S.powers[p.k]=day(); } dirty.powers=true; return; }
+  if (e.target.id==="newWorld"){
+    if (!e.target.dataset.sure){ e.target.dataset.sure="1"; e.target.textContent="Sicuro? Tocca di nuovo per ricominciare"; e.target.classList.add("primary"); return; }
+    const m=$("nmM").value.trim()||"Adamo", f=$("nmF").value.trim()||"Eva";
+    $("over").hidden=true; hideBanner(); newGame(m,f); saveGame(); setTab("people");
+  }
+});
+$("tab-powers").addEventListener("change",e=>{ if (e.target.id==="optReveal"){ S.opts.reveal=e.target.checked; } });
+
+function updateHeader(){
+  $("hDay").textContent=`Giorno ${day()}`;
+  $("hSeason").textContent=`${SEASONS[season()]} · anno ${Math.floor((day()-1)/YEAR_DAYS)+1}`;
+  $("hMeta").textContent=`${WEATHER[S.weather].n} · ${timeStr()} · ${Math.round(tempNow())}°C`;
+  $("sPop").textContent=alive().length;
+  $("sDisc").textContent=`${Object.keys(S.disc).length}/${DISC.length}`;
+  $("sWords").textContent=S.words.length;
+  $("sSeen").textContent=Math.round(S.seenCount/(W*H)*100)+"%";
+  $("dayMark").style.left=`calc(${tod()/DAY*100}% - 1px)`;
+  $("play").textContent=paused?"Riprendi":"Pausa";
+  for (const b of $("speeds").children) b.setAttribute("aria-pressed",String(+b.dataset.sp===speed));
+  $("pauseDawn").checked=!!S.opts.pauseDawn;
+}
+let lastSig="";
+function updateUI(){
+  updateHeader();
+  const sig=alive().map(p=>p.id+":"+(p.order?p.order.k:"")).join(",")+"|"+selected;
+  if (sig!==lastSig){ lastSig=sig; dirty.people=true; }
+  if (tab==="people"){ if (dirty.people){ renderPeople(); dirty.people=false; } if (dirty.detail){ renderDetail(); dirty.detail=false; } updatePeople(); updateDetail(); }
+  if (tab==="diary" && dirty.diary){ renderDiary(); dirty.diary=false; }
+  if (tab==="disc" && dirty.disc){ renderDisc(); dirty.disc=false; }
+  if (tab==="powers" && dirty.powers){ renderPowers(); dirty.powers=false; }
+}
+
+$("play").onclick=()=>{ paused=!paused; if (!paused) hideBanner(); };
+$("speeds").onclick=e=>{ const b=e.target.closest("[data-sp]"); if (b) speed=+b.dataset.sp; };
+$("nextDay").onclick=()=>{ runToDawn=true; paused=false; hideBanner(); };
+$("pauseDawn").onchange=e=>{ S.opts.pauseDawn=e.target.checked; };
+document.addEventListener("keydown",e=>{ if (e.target.closest("input")) return; if (e.code==="Space"){ e.preventDefault(); paused=!paused; if (!paused) hideBanner(); } });
+document.addEventListener("visibilitychange",()=>{ if (document.hidden) saveGame(); });
+
+let lastT=0, acc=0;
+function frame(t){
+  const dt=Math.min(.25,(t-lastT)/1000||0); lastT=t;
+  if (!paused && !S.over){ acc+=dt*8*speed; let n=0; while (acc>=1 && n<400){ tick(); acc-=1; n++; if (paused) { acc=0; break; } } }
+  else acc=0;
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+function start(data){
+  let ok=false;
+  if (data && data.save) ok=loadGame(data.save);
+  if (!ok){ try{ const s=localStorage.getItem(SAVE_KEY); if (s) ok=loadGame(s); }catch(e){} }
+  if (!ok) newGame("Adamo","Eva");
+  else { selected=alive()[0]?.id||null; cam.follow=selected; const p=personById(selected); if (p){ cam.x=p.x+.5; cam.y=p.y+.5; } fitZoom(); if (data && data.save){ paused=!!data.paused; speed=data.speed||1; } }
+  resize(); setTab(tab);
+  if (S.over) showOver();
+  setInterval(updateUI,250); updateUI();
+  requestAnimationFrame(frame);
+}
+window.addEventListener("resize",()=>resize());
+window.claude?.hot?.snapshot?.(()=>({ save:JSON.stringify(S), paused, speed }));
+window.__terraZero = { get S(){ return S; }, tick, newGame, days(n){ for (let i=0;i<n*DAY && !S.over;i++) tick(); } };
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
+<!-- wrapper -->
+</body>
+</html>

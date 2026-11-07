@@ -12,5 +12,9 @@ _(nessuna ancora)_
 ## 📚 Libri
 _(nessuno ancora)_
 
+## ▶️ Video YouTube
+- **"Video presepe con pochi euro"** — Ciro Cerullo (canale di presepi) · aggiunto il 07/11/2026
+  - Note: per le luci del presepe usa prodotti di **Frisa Presepi**, un'azienda specializzata proprio in luci e materiali per presepi. Da ricordare come fornitore.
+
 ## 💬 Frasi e citazioni
 _(nessuna ancora)_

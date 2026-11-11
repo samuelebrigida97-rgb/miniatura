@@ -5,6 +5,9 @@ import { Ears, Mouth } from './voice.js';
 import { Brain, BrainError } from './brain.js';
 import { createHandlers, bindBrain, reminders, getWeather, weatherText } from './tools.js';
 import { spotify, redirectUri } from './spotify.js';
+import { seedMemories } from './seed.js';
+
+seedMemories();
 
 const $ = (id) => document.getElementById(id);
 

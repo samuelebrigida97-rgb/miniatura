@@ -3,18 +3,51 @@ import { store, getSettings, saveSettings } from './store.js';
 import { NeuralCore } from './neural.js';
 import { Ears, Mouth } from './voice.js';
 import { Brain, BrainError, logError } from './brain.js';
-import { createHandlers, bindBrain, reminders, getWeather, weatherText } from './tools.js';
+import { createHandlers, bindBrain, reminders, getWeather, weatherText, locate, knownLocation } from './tools.js';
 import { spotify, redirectUri } from './spotify.js';
 import { seedMemories } from './seed.js';
 
 seedMemories();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '1.3';
+const JARVIS_VERSION = '2.0';
 
-// Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi.
-const WAKE = /\b(jarvis|jarvi|jarviss|giarvis|jervis|gervis|charvis|jarbis|giarvi|jar vis)\b/i;
+// Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
+// le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
+const WAKE_KNOWN = ['jarvis', 'jarvi', 'jarviss', 'giarvis', 'jervis', 'gervis', 'charvis', 'jarbis', 'giarvi', 'javis', 'djarvis', 'yarvis', 'iarvis', 'jarves', 'jarvish', 'jarvys', 'travis', 'giarvìs', 'jarvis\'s'];
 const GOODBYE = /\b(ciao|arrivederci|a dopo|a più tardi|a presto|buonanotte|addio|alla prossima)\b/i;
+const GOODNIGHT = /\b(buonanotte|buona notte|vai a dormire|vai a nanna|dormi)\b/i;
+
+function lev1(a, b) {
+  // vero se a e b differiscono al massimo di una lettera (sostituita, in più o in meno)
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (a.length < b.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+
+// Cerca la parola di attivazione: restituisce { index, length } oppure null.
+function findWake(text) {
+  const extra = (getSettings().wakeWords || '').toLowerCase().split(',').map((w) => w.trim()).filter(Boolean);
+  const lower = text.toLowerCase();
+  for (const phrase of ['jar vis', 'giar vis', ...extra.filter((w) => w.includes(' '))]) {
+    const at = lower.indexOf(phrase);
+    if (at >= 0) return { index: at, length: phrase.length };
+  }
+  const words = [...WAKE_KNOWN, ...extra];
+  const re = /[\p{L}']+/gu;
+  let m;
+  while ((m = re.exec(lower))) {
+    const w = m[0];
+    if (words.includes(w) || (w.length >= 5 && w.length <= 7 && lev1(w, 'jarvis'))) return { index: m.index, length: w.length };
+  }
+  return null;
+}
 
 const ACKS = ['Dimmi, Signore.', 'Sono tutto orecchi, Signore.', 'Eccomi, Signore.', 'Agli ordini, Signore.', 'Dica pure, Signore.'];
 const BYES = ['A dopo, Signore.', 'Ciao Signore, io resto qui.', 'Quando vuoi, Signore.', 'Torno a sonnecchiare, Signore.'];
@@ -36,6 +69,9 @@ const state = {
   endAfterReply: false,
   busy: false,
   queue: [],              // annunci in attesa (es. promemoria scaduti mentre pensa)
+  rest: false,            // modalità notte: schermo scuro, ascolto spento
+  restAfterReply: false,
+  lastHeard: '',
 };
 
 // ---------- UI ----------
@@ -83,6 +119,7 @@ function showUser(text) {
 function tickClock() {
   const d = new Date();
   $('clock').textContent = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  $('rest-clock').textContent = $('clock').textContent;
   $('date').textContent = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
@@ -91,9 +128,12 @@ async function refreshWeather() {
     const w = await getWeather();
     $('w-temp').textContent = `${w.adesso.temperatura}°`;
     $('w-desc').textContent = weatherText(w._code);
-    $('w-place').textContent = `${w.luogo} · max ${w.previsioni[0].max}° min ${w.previsioni[0].min}°`;
-  } catch {
+    // "≈" = posizione stimata dalla rete, non dal GPS
+    $('w-place').textContent = `${w._source === 'rete' ? '≈ ' : ''}${w.luogo} · max ${w.previsioni[0].max}° min ${w.previsioni[0].min}°`;
+  } catch (e) {
     $('w-desc').textContent = 'non disponibile';
+    $('w-place').textContent = '';
+    logError(`meteo: ${e && e.message ? e.message : e}`);
   }
 }
 
@@ -138,11 +178,20 @@ function armSilence() {
   }, silenceMs());
 }
 
+let heardHint;
 const ears = new Ears({
   onFinal: (t) => {
     if (state.busy) return;
+    state.lastHeard = t;
     heard.text += ` ${t}`;
-    if (state.conversation) showUser(heard.text.trim());
+    if (state.conversation) {
+      showUser(heard.text.trim());
+    } else {
+      // in attesa: mostra cosa ha capito, così si vede come il tablet trascrive "Jarvis"
+      $('sub-user').textContent = `ho sentito: «${t}»`;
+      clearTimeout(heardHint);
+      heardHint = setTimeout(() => { if (!state.conversation && !state.busy) $('sub-user').textContent = ''; }, 4000);
+    }
     armSilence();
   },
   onInterim: (t) => {
@@ -152,9 +201,12 @@ const ears = new Ears({
   },
   onActive: (on) => sys('sys-ears', on || ears.wanted),
   onError: (kind) => {
+    logError(`udito: ${kind}`);
     if (kind === 'microfono-negato') {
       sys('sys-ears', false);
       showJarvis('Non ho il permesso di usare il microfono, Signore. Consentilo nelle impostazioni del browser e ricarica la pagina.');
+    } else {
+      sys('sys-ears', true, true); // giallo: microfono occupato da un'altra app, o riconoscimento senza rete
     }
   },
 });
@@ -164,6 +216,8 @@ const handlers = createHandlers({
   onSpotifyChanged: () => setTimeout(refreshMusic, 1200),
   endConversation: () => { state.endAfterReply = true; },
   onBrainstormChanged: () => refreshBoard(),
+  onLocationChanged: () => refreshWeather(),
+  rest: () => { state.restAfterReply = true; },
 });
 const brain = new Brain(handlers);
 bindBrain(brain);
@@ -171,13 +225,37 @@ bindBrain(brain);
 async function say(text) {
   showJarvis(text);
   ears.stop(); // non deve sentire se stesso (soprattutto con l'Alexa come cassa)
-  await mouth.speak(text);
+  try {
+    await mouth.speak(text);
+  } catch (e) {
+    logError(`voce: ${e && e.message ? e.message : e}`);
+  }
 }
 
 function listenAgain() {
   if (state.mode === 'off') return;
+  if (state.rest) { setMode('sleep'); return; } // di notte non ascolta
   setMode(state.conversation ? 'listening' : 'sleep');
   ears.start();
+}
+
+// ---------- modalità notte ----------
+
+function enterRest() {
+  if (state.conversation) endConversation();
+  state.rest = true;
+  state.restAfterReply = false;
+  ears.stop();
+  $('rest').hidden = false;
+  setMode('sleep');
+}
+
+function exitRest() {
+  state.rest = false;
+  $('rest').hidden = true;
+  if (state.busy) return;
+  startConversation();
+  run(async () => { await say(pick(['Eccomi, Signore.', 'Sono sveglio, Signore.', 'Bentornato, Signore.'])); });
 }
 
 function startConversation() {
@@ -201,10 +279,10 @@ function onHeard(raw) {
   if (!text) return;
 
   if (!state.conversation) {
-    const m = text.match(WAKE);
+    const m = findWake(text);
     if (!m) return;
     startConversation();
-    const rest = text.slice(m.index + m[0].length).replace(/^[\s,.!?:;]+/, '').trim();
+    const rest = text.slice(m.index + m.length).replace(/^[\s,.!?:;]+/, '').trim();
     const before = text.slice(0, m.index).trim();
     // "ciao jarvis" da solo = saluto di attivazione, non congedo
     if (rest.length < 3) {
@@ -217,11 +295,13 @@ function onHeard(raw) {
   }
 
   // in conversazione: "ok ciao Jarvis", "a dopo Jarvis", ecc. chiudono subito
-  if (GOODBYE.test(text) && WAKE.test(text) && text.split(/\s+/).length <= 6) {
+  if ((GOODBYE.test(text) || GOODNIGHT.test(text)) && findWake(text) && text.split(/\s+/).length <= 6) {
     showUser(text);
+    const night = GOODNIGHT.test(text);
     run(async () => {
-      await say(pick(BYES));
+      await say(night ? 'Buonanotte, Signore. Tocca lo schermo quando mi vuoi.' : pick(BYES));
       endConversation();
+      if (night) enterRest();
     });
     return;
   }
@@ -258,7 +338,8 @@ function handle(text) {
     sys('sys-brain', !!getSettings().geminiKey);
     fadeThoughts();
     await say(reply || 'Uhm. Ho perso il filo, Signore.');
-    if (state.endAfterReply) endConversation();
+    if (state.restAfterReply) enterRest();
+    else if (state.endAfterReply) endConversation();
   });
 }
 
@@ -267,7 +348,9 @@ function errorMessage(e) {
   switch (e.kind) {
     case 'no-key': openSettings(); return 'Signore, mi manca il cervello: incolla la chiave Gemini nelle impostazioni.';
     case 'bad-key': sys('sys-brain', false, true); return 'La chiave Gemini non funziona, Signore. Controllala nelle impostazioni.';
-    case 'quota': return 'Ho finito le richieste gratuite per questo minuto, Signore. Dammi qualche secondo e riprova.';
+    case 'quota': return e.daily
+      ? 'Ho finito tutte le richieste gratuite di oggi, Signore. Google me ne ridà domani.'
+      : 'Sto facendo troppe richieste al minuto per il piano gratuito, Signore. Dammi qualche secondo e riprova.';
     case 'timeout': return 'Il mio cervello remoto non risponde in questo momento, Signore. Riprova tra poco.';
     case 'overloaded': return 'I server di Google sono sovraccarichi, Signore. Riprova tra poco.';
     case 'network': return 'Non riesco a raggiungere la rete, Signore. Controlla il Wi-Fi.';
@@ -285,6 +368,7 @@ const TOOL_LABELS = {
   dimentica: 'dimentico', spotify_riproduci: 'cerco su Spotify', spotify_comando: 'comando Spotify',
   spotify_cosa_suona: 'ascolto cosa suona', brainstorming: 'preparo la lavagna',
   salva_idea: 'salvo l\'idea', leggi_idee: 'rileggo le idee', termina_conversazione: 'chiudo',
+  dove_sono: 'controllo dove mi trovo', imposta_citta: 'aggiorno la posizione', vai_a_riposo: 'mi metto a riposo',
 };
 
 // I "riassunti dei pensieri" di Gemini hanno spesso un titolo in grassetto: mostriamo quello.
@@ -386,6 +470,9 @@ $('core').addEventListener('click', (ev) => {
   }
 });
 
+$('btn-rest').addEventListener('click', () => { if (state.mode !== 'off' && !state.busy) enterRest(); });
+$('rest').addEventListener('click', exitRest);
+
 $('btn-keyboard').addEventListener('click', () => {
   const f = $('typer');
   f.hidden = !f.hidden;
@@ -428,6 +515,7 @@ function fillMemories() {
     const del = document.createElement('button');
     del.type = 'button';
     del.textContent = '✕';
+    del.setAttribute('aria-label', 'Dimentica');
     del.onclick = () => {
       const cur = store.get('memories', []);
       cur.splice(i, 1);
@@ -442,12 +530,17 @@ function fillMemories() {
 function fillDiag() {
   const m = store.get('models', null);
   const errs = store.get('errors', []);
+  const geo = knownLocation();
   $('s-diag').textContent = [
     `Versione: ${JARVIS_VERSION}`,
     `Chiave Gemini: ${getSettings().geminiKey ? 'presente' : 'assente'}`,
-    `Modelli: ${m ? `${m.fast}${m.proven ? ' (verificato)' : ''} / ${m.deep}` : 'non ancora scoperti'}`,
+    `Modello in uso: ${brain.lastModel || (m ? brain.chain()[0] : 'non ancora scelto')}`,
+    `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why}, fino alle ${new Date(v.until).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`).join('; ') || 'nessuno'}`,
     `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'} · Voci italiane: ${mouth.italianVoices().length}`,
+    `Posizione: ${geo ? `${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'GPS' : geo.source === 'manuale' ? 'scritta a mano' : 'stimata dalla rete'})` : 'non ancora rilevata'}`,
+    `Ultima frase sentita: ${state.lastHeard || '(niente)'}`,
+    `Batteria: ${body.battery ? `${Math.round(body.battery.level * 100)}%${body.battery.charging ? ' in carica' : ''}` : 'non leggibile'}`,
     '',
     errs.length ? 'Ultimi errori:' : 'Nessun errore registrato.',
     ...errs.map((e) => `${e.t}  ${e.text}`),
@@ -462,7 +555,10 @@ function openSettings() {
   $('s-pitch').value = s.pitch;
   $('s-rate-v').textContent = s.rate;
   $('s-pitch-v').textContent = s.pitch;
-  $('s-city').value = s.city;
+  $('s-city').value = s.place;
+  $('s-wake').value = s.wakeWords;
+  const geo = knownLocation();
+  $('s-geo').textContent = geo ? `Adesso mi risulta: ${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'dal GPS' : geo.source === 'manuale' ? 'scritta da te' : 'stimata dalla rete, può essere sbagliata'})` : 'Posizione non ancora rilevata.';
   $('s-spotify').value = s.spotifyClientId;
   $('s-redirect').textContent = redirectUri();
   $('s-spotify-status').textContent = spotify.isConnected() ? 'Collegato ✓' : 'Non collegato';
@@ -480,7 +576,8 @@ function readSettingsForm() {
     voiceName: $('s-voice').value,
     rate: Number($('s-rate').value),
     pitch: Number($('s-pitch').value),
-    city: $('s-city').value.trim() || 'Roma',
+    place: $('s-city').value.trim(),
+    wakeWords: $('s-wake').value.trim(),
     spotifyClientId: $('s-spotify').value.trim(),
   };
 }
@@ -519,17 +616,28 @@ $('s-test-brain').addEventListener('click', async () => {
   const btn = $('s-test-brain');
   btn.textContent = 'Provo…'; btn.disabled = true;
   try {
-    store.remove('models');
-    const m = await brain.warmup();
-    const t0 = Date.now();
-    const reply = await brain.ask('Prova tecnica: rispondi solo "Cervello operativo, Signore."');
-    $('s-test-result').textContent = `OK in ${((Date.now() - t0) / 1000).toFixed(1)}s con ${m.fast}: ${reply}`;
+    const r = await brain.selfTest();
+    $('s-test-result').textContent = `OK in ${r.secs.toFixed(1)}s con ${r.model}: ${r.text}`;
     sys('sys-brain', true);
   } catch (e) {
     $('s-test-result').textContent = `ERRORE: ${e.kind || ''} ${e.message || e}`;
     sys('sys-brain', false, true);
   }
   btn.textContent = 'Prova il cervello'; btn.disabled = false;
+  fillDiag();
+});
+
+$('s-locate').addEventListener('click', async () => {
+  saveSettings({ place: $('s-city').value.trim() });
+  $('s-geo').textContent = 'Rilevo la posizione…';
+  try {
+    store.remove('geo');
+    const geo = await locate(null, { force: true });
+    $('s-geo').textContent = `Adesso mi risulta: ${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'dal GPS' : geo.source === 'manuale' ? 'scritta da te' : 'stimata dalla rete: consenti la posizione a Chrome per quella precisa'})`;
+    refreshWeather();
+  } catch (e) {
+    $('s-geo').textContent = e.message;
+  }
   fillDiag();
 });
 
@@ -543,15 +651,51 @@ $('s-reset-chat').addEventListener('click', () => {
 
 $('settings').addEventListener('close', () => {
   if ($('settings').returnValue !== 'save') return;
-  const before = getSettings().city;
+  const before = getSettings();
   saveSettings(readSettingsForm());
-  sys('sys-brain', !!getSettings().geminiKey);
-  if (getSettings().geminiKey) { store.remove('models'); brain.warmup().then(() => sys('sys-brain', true)).catch(() => sys('sys-brain', false, true)); }
-  if (before !== getSettings().city) {
+  const now = getSettings();
+  sys('sys-brain', !!now.geminiKey);
+  if (now.geminiKey && (now.geminiKey !== before.geminiKey || now.geminiModel !== before.geminiModel)) {
+    store.remove('models');
+    store.remove('cooldowns'); // chiave nuova = quote nuove
+    brain.warmup().then(() => sys('sys-brain', true)).catch(() => sys('sys-brain', false, true));
+  }
+  if (before.place !== now.place) {
     store.remove('geo');
     refreshWeather();
   }
 });
+
+// ---------- il corpo: batteria e rete ----------
+
+const body = { battery: null, lowWarned: false };
+function refreshBody() {
+  const b = body.battery;
+  $('body-info').textContent = b ? `Batteria ${Math.round(b.level * 100)}%${b.charging ? ' ⚡' : ''}` : '';
+  if (!b) return;
+  if (b.charging) { body.lowWarned = false; return; }
+  if (b.level <= 0.15 && !body.lowWarned && state.mode !== 'off') {
+    body.lowWarned = true;
+    state.queue.push(`Signore, la mia batteria è al ${Math.round(b.level * 100)} per cento. Mettimi in carica, o tra poco mi spengo.`);
+    if (!state.busy) run(async () => {});
+  }
+}
+if (navigator.getBattery) {
+  navigator.getBattery().then((b) => {
+    body.battery = b;
+    b.addEventListener('levelchange', refreshBody);
+    b.addEventListener('chargingchange', refreshBody);
+    refreshBody();
+  }).catch(() => {});
+}
+brain.extraContext = () => {
+  const b = body.battery;
+  const parts = [];
+  if (b) parts.push(`batteria al ${Math.round(b.level * 100)} per cento, ${b.charging ? 'in carica' : 'non in carica'}`);
+  parts.push(navigator.onLine ? 'connesso a internet' : 'senza connessione');
+  return `Il tuo corpo (il tablet): ${parts.join(', ')}.`;
+};
+window.addEventListener('online', () => { if (state.mode !== 'off') { refreshWeather(); } });
 
 // ---------- avvio ----------
 
@@ -574,7 +718,7 @@ document.addEventListener('visibilitychange', () => {
 
 function greeting() {
   const h = new Date().getHours();
-  if (h < 5) return 'Sistemi online. Ancora sveglio, Signore? Non la giudico. Quasi.';
+  if (h < 5) return 'Sistemi online. Ancora sveglio, Signore? Non ti giudico. Quasi.';
   if (h < 13) return 'Sistemi online. Buongiorno, Signore.';
   if (h < 18) return 'Sistemi online. Buon pomeriggio, Signore.';
   return 'Sistemi online. Buonasera, Signore.';
@@ -595,10 +739,18 @@ async function boot() {
     showJarvis('Questo browser non supporta il riconoscimento vocale. Usa Google Chrome sul tablet, Signore.');
   }
 
+  // chiede la posizione adesso, dentro il tocco: così Chrome mostra la richiesta di permesso
+  locate(null, { force: true }).then(refreshWeather).catch((e) => { logError(`posizione: ${e.message}`); refreshWeather(); });
+  if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch { /* ignore */ } }
+  refreshBody();
+
   await new Promise((r) => setTimeout(r, 1400));
   state.busy = true;
-  await say(getSettings().geminiKey ? greeting() : 'Sistemi online, Signore. Mi manca solo il cervello: incolla la chiave Gemini nelle impostazioni.');
-  state.busy = false;
+  try {
+    await say(getSettings().geminiKey ? greeting() : 'Sistemi online, Signore. Mi manca solo il cervello: incolla la chiave Gemini nelle impostazioni.');
+  } finally {
+    state.busy = false;
+  }
   if (!getSettings().geminiKey) openSettings();
   await flushQueue();
   listenAgain();
@@ -613,7 +765,7 @@ $('btn-boot').addEventListener('click', boot);
   setInterval(refreshWeather, 15 * 60 * 1000);
   setInterval(refreshMusic, 30 * 1000);
   refreshReminders();
-  refreshWeather();
+  if (knownLocation() || getSettings().place) refreshWeather(); // altrimenti aspetta il tocco su ATTIVA
   refreshBoard();
 
   const sp = await spotify.handleRedirect().catch((e) => ({ ok: false, error: e.message }));
@@ -622,6 +774,11 @@ $('btn-boot').addEventListener('click', boot);
   refreshMusic();
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // quando arriva una versione nuova e Jarvis è ancora spento, ricarica per usarla subito
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && state.mode === 'off') location.reload();
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => reg.update()).catch(() => {});
   }
 })();

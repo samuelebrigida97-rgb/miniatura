@@ -204,6 +204,12 @@ button {
 .board-ideas li::marker { color: var(--cyan); }
 .board-ideas .empty { list-style: none; margin-left: -16px; color: var(--cyan-dim); }
 
+/* ---- modalità notte ---- */
+.rest { position: fixed; inset: 0; z-index: 9; background: #000; display: grid; place-items: center; cursor: pointer; }
+.rest-inner { text-align: center; }
+.rest-clock { font: 700 clamp(64px, 18vw, 180px)/1 Orbitron, sans-serif; color: rgba(70, 200, 255, 0.28); letter-spacing: 0.05em; }
+.rest-hint { margin-top: 18px; color: rgba(70, 200, 255, 0.22); letter-spacing: 0.15em; font-size: 15px; }
+
 /* ---- schermata di avvio ---- */
 .boot {
   position: fixed;

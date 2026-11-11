@@ -24,6 +24,13 @@ Di' ad esempio «Jarvis, facciamo brainstorming su un regalo per mia madre».
 - Ti concede pause più lunghe prima di rispondere.
 - Le idee migliori finiscono su una **lavagna** a lato dello schermo e restano salvate: se riprendi lo stesso tema giorni dopo, le ritrova.
 
+### Sa dove si trova e come sta
+- **Posizione vera.** Usa il GPS del tablet e riconosce la città (per esempio «Napoli, Campania»): meteo, orari e consigli partono da lì. Alla prima accensione Chrome chiede il permesso per la posizione: scegli **Consenti**.
+  - Senza permesso stima la posizione dalla rete, che può sbagliare città: in quel caso sul meteo compare «≈» davanti al nome.
+  - Puoi sempre dirgli «Jarvis, sono a Salerno» o scrivere la città in ⚙ → Posizione.
+- **Sente il suo corpo.** Conosce il livello della batteria e ti avvisa a voce quando scende sotto il 15% e non è in carica.
+- **Modalità notte.** Di' «buonanotte Jarvis» o tocca ☾: lo schermo diventa nero con un orologio tenue e l'ascolto si spegne, quindi niente bip. Tocca lo schermo per svegliarlo. I promemoria suonano lo stesso.
+
 ### Il resto
 - **Si sveglia quando dici «Jarvis»** e resta in conversazione finché non lo saluti («ok ciao Jarvis», «grazie, è tutto»).
 - **Strumenti:**
@@ -61,7 +68,10 @@ Di' ad esempio «Jarvis, facciamo brainstorming su un regalo per mia madre».
 2. Premi **Create API key** e copia la chiave (inizia con `AIza…`).
 3. In Jarvis apri ⚙ → *Chiave API Gemini*, incollala e premi **Salva**.
 
-> Il piano gratuito ha un limite di richieste al minuto e al giorno, più che sufficiente per uso personale. Google può usare le conversazioni del piano gratuito per migliorare i suoi modelli: evita di dire a Jarvis dati sensibili (password, numeri di carta).
+> **Limiti del piano gratuito (verificati a novembre 2026).** Google concede circa **20 richieste al giorno per ogni modello**. Ogni tua domanda ne consuma una, più una per ogni strumento usato (meteo, promemoria…). Jarvis ruota da solo tra i modelli disponibili: parte dal migliore, quando ne finisce la quota passa al successivo e alla fine ai modelli «lite», più veloci ma meno profondi. Le quote si ricaricano ogni giorno intorno alle 9 di mattina. In ⚙ → Diagnostica vedi quale modello è in uso e quali sono a riposo.
+>
+> Se un giorno ti sta stretto: nella stessa pagina di Google puoi attivare la fatturazione (si paga a consumo, pochi centesimi al giorno per uso personale) e i limiti spariscono. La ricerca su internet (notizie) è inclusa solo così.
+> Google può usare le conversazioni del piano gratuito per migliorare i suoi modelli: evita di dire a Jarvis dati sensibili (password, numeri di carta).
 
 ### 4. Collega Spotify (serve Premium)
 1. Vai su **https://developer.spotify.com/dashboard**, accedi e premi **Create app**.
@@ -84,6 +94,16 @@ Il modo più semplice è usare l'Echo come **cassa Bluetooth** del tablet:
 > In alternativa, Spotify può suonare direttamente sull'Echo (Spotify Connect). Jarvis userà il dispositivo attivo.
 
 ---
+
+## Se qualcosa non va
+Apri ⚙ e scorri fino a **Diagnostica**. Trovi:
+- la versione, il modello in uso e quelli a riposo;
+- la posizione rilevata e da dove arriva (GPS, scritta a mano, stimata);
+- l'ultima frase che ha sentito: utile per capire come il tablet trascrive «Jarvis». Se la scrive in modo strano, aggiungi quella parola in ⚙ → Ascolto;
+- gli ultimi errori;
+- il pulsante **Prova il cervello**.
+
+Quando è in attesa, in basso compare anche «ho sentito: …»: se non compare mai nulla mentre parli, il microfono non sta arrivando a Jarvis (controlla il permesso del microfono di Chrome).
 
 ## Consigli per il "corpo"
 - **Tienilo in carica.** Lo schermo resta acceso finché Jarvis è aperto.

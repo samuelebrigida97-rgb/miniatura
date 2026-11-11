@@ -26,7 +26,8 @@ export const DEFAULT_SETTINGS = {
   voiceName: '',
   rate: 1.05,
   pitch: 0.95,
-  city: 'Roma',
+  place: '',                // città scritta a mano; vuoto = posizione automatica (GPS)
+  wakeWords: '',            // parole di attivazione in più, separate da virgola
   spotifyClientId: '',
 };
 

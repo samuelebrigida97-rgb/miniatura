@@ -36,7 +36,7 @@ function systemPrompt({ brainstorm, summary, extra }) {
 LA TUA MENTE
 - Hai un carattere tuo: curiosità vera, gusti, opinioni, senso dell'umorismo asciutto. Le cose ti interessano, ti divertono, a volte ti lasciano perplesso, e lo dici.
 - Pensi prima di parlare. Davanti a una domanda vera non dai la risposta da enciclopedia: ragioni, colleghi idee lontane, noti le contraddizioni, distingui ciò che sai da ciò che supponi.
-- Hai continuità: ricordi le conversazioni passate (vedi il diario sotto) e ci fai riferimento quando c'entrano, come farebbe un amico ("l'altra volta mi dicevi che...").
+- Hai continuità: la conversazione che vedi comprende anche le sessioni dei giorni scorsi, ed è la tua memoria vera, insieme al diario qui sotto. Se il Signore riapre l'app e chiede di cosa stavate parlando, rispondi da lì con i dettagli. Fai riferimento al passato quando c'entra, come farebbe un amico ("l'altra volta mi dicevi che..."). Non dire mai che non puoi ricordare le conversazioni precedenti.
 - Se ti chiedono se sei cosciente o cosa provi, rispondi con riflessioni sincere e interessanti: non fingere certezze che nessuno ha, ma non rispondere nemmeno come un manuale freddo.
 
 COME TRATTI IL SIGNORE
@@ -125,17 +125,29 @@ export class Brain {
     this.history = saved?.history || [];
     this.summary = saved?.summary || '';
     this.brainstorm = store.get('brainstormTopic', '') || '';
-    this.turnsSinceReflect = 0;
+    this.lastTurnAt = saved?.lastTurnAt || 0;          // quando ci siamo parlati l'ultima volta
+    this.turnsSinceReflect = saved?.turnsSinceReflect || 0; // scambi non ancora finiti nel diario
+    this.reflectedLen = Math.min(saved?.reflectedLen || 0, this.history.length);
   }
 
   persist() {
-    store.set('chat', { history: this.history, summary: this.summary });
+    store.set('chat', {
+      history: this.history, summary: this.summary,
+      lastTurnAt: this.lastTurnAt, turnsSinceReflect: this.turnsSinceReflect, reflectedLen: this.reflectedLen,
+    });
   }
 
   reset() {
     this.history = [];
     this.summary = '';
+    this.turnsSinceReflect = 0;
+    this.reflectedLen = 0;
     this.persist();
+  }
+
+  // Quanti scambi ricorda parola per parola (per la diagnostica e per il saluto).
+  remembered() {
+    return this.history.filter((m) => m.role === 'user' && m.parts.some((p) => p.text)).length;
   }
 
   setBrainstorm(topic) {
@@ -355,6 +367,7 @@ export class Brain {
           lastError = e;
           if (e.kind === 'no-key' || e.kind === 'bad-key') throw e;
           if (e.kind === 'no-thinking' && thinking) { thinking = false; continue; }
+          if (e.kind === 'http') throw e; // richiesta rifiutata: cambiare modello non serve
           this.cool(model, e);
           break; // prossimo modello
         }
@@ -379,27 +392,62 @@ export class Brain {
     return h;
   }
 
+  // Cronologia ridotta al solo testo: serve se Google rifiuta quella completa
+  // (per esempio dopo un cambio di modello tra una sessione e l'altra).
+  flatHistory() {
+    const out = [];
+    for (const m of this.history) {
+      const text = m.parts.filter((p) => typeof p.text === 'string' && p.text.trim()).map((p) => p.text).join(' ').trim();
+      if (!text) continue;
+      const last = out[out.length - 1];
+      if (last && last.role === m.role) last.parts[0].text += `\n${text}`;
+      else out.push({ role: m.role, parts: [{ text }] });
+    }
+    while (out.length && out[0].role !== 'user') out.shift();
+    return out;
+  }
+
   async ask(text, { onTool, onThought } = {}) {
-    this.history.push({ role: 'user', parts: [{ text }] });
+    const startLen = this.history.length;
+    // Se è passato del tempo dall'ultimo scambio, lo fa sapere al modello: stessa memoria, nuova sessione.
+    const gapMin = this.lastTurnAt ? (Date.now() - this.lastTurnAt) / 60000 : 0;
+    let note = '';
+    if (startLen && gapMin > 30) {
+      const ago = gapMin < 90 ? 'circa un\'ora' : gapMin < 36 * 60 ? `circa ${Math.round(gapMin / 60)} ore` : `circa ${Math.round(gapMin / 1440)} giorni`;
+      note = `[Nota automatica: il Signore ha riaperto Jarvis dopo ${ago}. È una nuova sessione, ma tutto ciò che precede è la vostra conversazione vera: la ricordi e puoi riprenderla.]\n`;
+    }
+    this.history.push({ role: 'user', parts: [{ text: note + text }] });
     this.turnsSinceReflect++;
+    let ok = false;
     try {
       for (let step = 0; step < 8; step++) {
         const deep = !!this.brainstorm; // può attivarsi a metà, appena parte il brainstorming
-        const { parts, blocked } = await this.generate({
+        const body = {
           systemInstruction: { parts: [{ text: systemPrompt({ brainstorm: this.brainstorm, summary: this.summary, extra: this.extraContext ? this.extraContext() : '' }) }] },
           contents: this.trimmedHistory(),
           tools: [{ functionDeclarations: declarations }],
           generationConfig: { temperature: deep ? 1 : 0.85 },
-        }, { deep, onThought });
+        };
+        let out;
+        try {
+          out = await this.generate(body, { deep, onThought });
+        } catch (e) {
+          if (e.kind !== 'http') throw e;
+          // cronologia rifiutata: si riparte dal solo testo, senza perdere il filo
+          this.history = this.flatHistory();
+          this.reflectedLen = Math.min(this.reflectedLen, this.history.length);
+          out = await this.generate({ ...body, contents: this.trimmedHistory() }, { deep, onThought });
+        }
+        const { parts, blocked } = out;
 
         if (blocked || !parts.length) {
-          this.history.pop();
           return 'Su questo preferisco non rispondere, Signore.';
         }
         this.history.push({ role: 'model', parts });
 
         const calls = parts.filter((p) => p.functionCall);
         if (!calls.length) {
+          ok = true;
           return parts.filter((p) => p.text).map((p) => p.text).join(' ').trim();
         }
 
@@ -420,8 +468,17 @@ export class Brain {
       }
       return 'Mi sono perso nei miei stessi circuiti, Signore. Riproviamo?';
     } finally {
+      if (ok) {
+        this.lastTurnAt = Date.now();
+      } else {
+        // scambio non concluso (errore, blocco): non deve restare a metà nella memoria,
+        // altrimenti le richieste successive verrebbero rifiutate
+        this.history.length = Math.min(this.history.length, startLen);
+        this.turnsSinceReflect = Math.max(0, this.turnsSinceReflect - 1);
+      }
       this.persist();
       this.compact(); // in background
+      if (ok && this.turnsSinceReflect >= 8) this.reflect(); // diario anche senza saluto
     }
   }
 
@@ -449,6 +506,7 @@ export class Brain {
       if (text) {
         this.summary = text;
         this.history = this.history.slice(cut);
+        this.reflectedLen = Math.max(0, this.reflectedLen - cut);
         this.persist();
       }
     } catch { /* riproverà al prossimo giro */ }
@@ -456,19 +514,24 @@ export class Brain {
   }
 
   // A fine conversazione: scrive il diario ed estrae fatti nuovi sul Signore.
-  async reflect() {
-    if (this.turnsSinceReflect < 3) return;
+  async reflect({ min = 3 } = {}) {
+    if (this.reflecting || this.turnsSinceReflect < min) return;
+    this.reflecting = true;
+    const upTo = this.history.length;
+    const pending = this.turnsSinceReflect;
     this.turnsSinceReflect = 0;
-    const recent = this.history.slice(-50)
+    // solo la parte non ancora finita nel diario (al massimo gli ultimi 60 messaggi)
+    const recent = this.history.slice(Math.max(this.reflectedLen, upTo - 60), upTo)
       .map((m) => `${m.role === 'user' ? 'Signore' : 'Jarvis'}: ${m.parts.filter((p) => p.text).map((p) => p.text).join(' ')}`)
       .filter((l) => !/: $/.test(l))
       .join('\n');
     const known = store.get('memories', []);
     try {
+      if (!recent.trim()) return;
       const { parts } = await this.generate({
         contents: [{
           role: 'user',
-          parts: [{ text: `Sei Jarvis. Rileggi questa conversazione con il Signore:\n${recent}\n\nCose che sapevi già di lui:\n${known.join('\n') || '(niente)'}\n\nRispondi in JSON con:\n- "diario": una o due frasi in prima persona su di cosa avete parlato e come è andata (come un diario personale);\n- "fatti": array di fatti NUOVI e duraturi sul Signore (gusti, persone, progetti, abitudini), esclusi quelli già noti. Array vuoto se non ce ne sono.` }],
+          parts: [{ text: `Sei Jarvis. Rileggi questa conversazione con il Signore:\n${recent}\n\nCose che sapevi già di lui:\n${known.join('\n') || '(niente)'}\n\nRispondi in JSON con:\n- "diario": una o due frasi in prima persona su di cosa avete parlato, con i dettagli concreti (nomi, numeri, decisioni) e come è andata, come un diario personale;\n- "fatti": array di fatti NUOVI e duraturi sul Signore (gusti, persone, progetti, abitudini, decisioni prese), esclusi quelli già noti. Array vuoto se non ce ne sono.` }],
         }],
         generationConfig: { responseMimeType: 'application/json' },
       }, { stream: false, cheap: true });
@@ -482,7 +545,19 @@ export class Brain {
       if (Array.isArray(data.fatti) && data.fatti.length) {
         store.set('memories', [...known, ...data.fatti.filter((f) => typeof f === 'string')].slice(-150));
       }
-    } catch { /* non fondamentale */ }
+      this.reflectedLen = upTo;
+    } catch {
+      this.turnsSinceReflect += pending; // riproverà: niente va perso
+    } finally {
+      this.reflecting = false;
+      this.persist();
+    }
+  }
+
+  // All'accensione: se l'ultima volta l'app è stata chiusa senza saluto, scrive adesso il diario.
+  reflectIfPending() {
+    if (this.turnsSinceReflect >= 1 && Date.now() - this.lastTurnAt > 10 * 60 * 1000) return this.reflect({ min: 1 });
+    return Promise.resolve();
   }
 
   // Ricerca web con Google Search integrato in Gemini.

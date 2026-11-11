@@ -15,6 +15,7 @@ Jarvis è una web app che gira nel browser Chrome del tablet Android. Non ha ser
   - La conversazione resta salvata anche se chiudi l'app.
   - Le parti vecchie vengono riassunte invece di essere dimenticate.
   - Quando lo saluti scrive un **diario** della chiacchierata e annota cosa ha imparato su di te, così la volta dopo può dirti «l'altra volta mi dicevi che…».
+- **Riprende il filo quando lo riapri.** Anche se chiudi l'app senza salutare, alla riapertura ricorda la conversazione, sa quanto tempo è passato e scrive da solo il diario di quella precedente. La memoria vive nel browser del dispositivo: apri Jarvis sempre dalla stessa icona, altrimenti è come parlare con un gemello che non sa nulla.
 - **Ti lascia finire.** Aspetta una vera pausa prima di rispondere, quindi puoi ragionare ad alta voce.
 
 ### Brainstorming

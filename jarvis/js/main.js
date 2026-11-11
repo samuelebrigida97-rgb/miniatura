@@ -9,8 +9,24 @@ import { seedMemories } from './seed.js';
 
 seedMemories();
 
+// Link di configurazione: aprendo .../jarvis/#chiave=XXXX la chiave Gemini viene salvata da sola
+// (e subito tolta dall'indirizzo). Serve a non doverla incollare a mano in ogni browser.
+let keyImported = false;
+(function importKeyFromLink() {
+  const m = location.hash.match(/^#chiave=(.+)$/);
+  if (!m) return;
+  const key = decodeURIComponent(m[1]).replace(/[\s"']/g, '');
+  if (key) {
+    saveSettings({ geminiKey: key });
+    store.remove('models');
+    store.remove('cooldowns');
+    keyImported = true;
+  }
+  history.replaceState(null, '', location.pathname + location.search);
+})();
+
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '2.0';
+const JARVIS_VERSION = '2.1';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -547,8 +563,10 @@ function fillDiag() {
   ].join('\n');
 }
 
+let settingsBefore = null;
 function openSettings() {
   const s = getSettings();
+  if (!$('settings').open) settingsBefore = s;
   $('s-key').value = s.geminiKey;
   $('s-model').value = s.geminiModel;
   $('s-rate').value = s.rate;
@@ -571,7 +589,7 @@ function openSettings() {
 
 function readSettingsForm() {
   return {
-    geminiKey: $('s-key').value.trim(),
+    geminiKey: $('s-key').value.replace(/[\s"']/g, ''),
     geminiModel: $('s-model').value.trim(),
     voiceName: $('s-voice').value,
     rate: Number($('s-rate').value),
@@ -649,9 +667,12 @@ $('s-reset-chat').addEventListener('click', () => {
   setTimeout(() => { $('s-reset-chat').textContent = 'Dimentica la conversazione'; }, 1500);
 });
 
+// Le impostazioni si salvano mentre si scrive: non c'è modo di perderle chiudendo la finestra.
+$('settings').addEventListener('input', () => { if ($('settings').open) saveSettings(readSettingsForm()); });
+$('settings').addEventListener('change', () => { if ($('settings').open) saveSettings(readSettingsForm()); });
+
 $('settings').addEventListener('close', () => {
-  if ($('settings').returnValue !== 'save') return;
-  const before = getSettings();
+  const before = settingsBefore || getSettings();
   saveSettings(readSettingsForm());
   const now = getSettings();
   sys('sys-brain', !!now.geminiKey);
@@ -686,6 +707,8 @@ if (navigator.getBattery) {
     b.addEventListener('levelchange', refreshBody);
     b.addEventListener('chargingchange', refreshBody);
     refreshBody();
+  // chiede a Chrome di non cancellare mai la memoria di Jarvis (chiave, ricordi, diario)
+  try { navigator.storage?.persist?.(); } catch { /* ignore */ }
   }).catch(() => {});
 }
 brain.extraContext = () => {
@@ -743,6 +766,8 @@ async function boot() {
   locate(null, { force: true }).then(refreshWeather).catch((e) => { logError(`posizione: ${e.message}`); refreshWeather(); });
   if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch { /* ignore */ } }
   refreshBody();
+  // chiede a Chrome di non cancellare mai la memoria di Jarvis (chiave, ricordi, diario)
+  try { navigator.storage?.persist?.(); } catch { /* ignore */ }
 
   await new Promise((r) => setTimeout(r, 1400));
   state.busy = true;
@@ -771,6 +796,8 @@ $('btn-boot').addEventListener('click', boot);
   const sp = await spotify.handleRedirect().catch((e) => ({ ok: false, error: e.message }));
   if (sp && !sp.ok) showJarvis(`Il collegamento con Spotify non è riuscito: ${sp.error}`);
   if (sp && sp.ok) showJarvis('Spotify collegato, Signore. Tocca ATTIVA e chiedimi un po\' di musica.');
+  if (keyImported) $('boot-hint').textContent = 'Chiave ricevuta: ora ho un cervello. Tocca ATTIVA.';
+  else if (!getSettings().geminiKey) $('boot-hint').textContent = 'Tocca per accendere. Poi ti chiederò la chiave Gemini: senza quella non posso ragionare.';
   refreshMusic();
 
   if ('serviceWorker' in navigator) {

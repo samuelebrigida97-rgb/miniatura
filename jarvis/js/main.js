@@ -26,7 +26,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '2.2';
+const JARVIS_VERSION = '2.3';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -554,6 +554,7 @@ function fillDiag() {
     `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why}, fino alle ${new Date(v.until).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`).join('; ') || 'nessuno'}`,
     `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'} · Voci italiane: ${mouth.italianVoices().length}`,
+    `Memoria: ${brain.remembered()} scambi ricordati parola per parola${brain.summary ? ' + riassunto dei precedenti' : ''}, ${store.get('memories', []).length} ricordi su di te, ${store.get('diary', []).length} pagine di diario · ${storagePersistent === true ? 'protetta' : storagePersistent === false ? 'non ancora garantita da Chrome: per proteggerla installa Jarvis sulla schermata Home' : 'protezione non verificabile'}`,
     `Posizione: ${geo ? `${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'GPS' : geo.source === 'manuale' ? 'scritta a mano' : 'stimata dalla rete'})` : 'non ancora rilevata'}`,
     `Ultima frase sentita: ${state.lastHeard || '(niente)'}`,
     `Batteria: ${body.battery ? `${Math.round(body.battery.level * 100)}%${body.battery.charging ? ' in carica' : ''}` : 'non leggibile'}`,
@@ -708,7 +709,7 @@ if (navigator.getBattery) {
     b.addEventListener('chargingchange', refreshBody);
     refreshBody();
   // chiede a Chrome di non cancellare mai la memoria di Jarvis (chiave, ricordi, diario)
-  try { navigator.storage?.persist?.(); } catch { /* ignore */ }
+  try { navigator.storage?.persist?.().then((ok) => { storagePersistent = ok; }); } catch { /* ignore */ }
   }).catch(() => {});
 }
 brain.extraContext = () => {
@@ -721,6 +722,9 @@ brain.extraContext = () => {
 window.addEventListener('online', () => { if (state.mode !== 'off') { refreshWeather(); } });
 
 // ---------- avvio ----------
+
+let storagePersistent = null;
+try { navigator.storage?.persisted?.().then((ok) => { storagePersistent = ok; }); } catch { /* ignore */ }
 
 let wakeLock = null;
 async function keepAwake() {
@@ -741,6 +745,11 @@ document.addEventListener('visibilitychange', () => {
 
 function greeting() {
   const h = new Date().getHours();
+  // se c'è una conversazione in memoria, lo dice: non riparte da zero
+  if (brain.remembered() > 0) {
+    const hello = h < 5 ? 'Ancora sveglio, Signore?' : h < 13 ? 'Buongiorno, Signore.' : h < 18 ? 'Buon pomeriggio, Signore.' : 'Buonasera, Signore.';
+    return `Sistemi online. ${hello} Bentornato: ricordo dove eravamo rimasti.`;
+  }
   if (h < 5) return 'Sistemi online. Ancora sveglio, Signore? Non ti giudico. Quasi.';
   if (h < 13) return 'Sistemi online. Buongiorno, Signore.';
   if (h < 18) return 'Sistemi online. Buon pomeriggio, Signore.';
@@ -770,7 +779,7 @@ async function boot() {
   if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch { /* ignore */ } }
   refreshBody();
   // chiede a Chrome di non cancellare mai la memoria di Jarvis (chiave, ricordi, diario)
-  try { navigator.storage?.persist?.(); } catch { /* ignore */ }
+  try { navigator.storage?.persist?.().then((ok) => { storagePersistent = ok; }); } catch { /* ignore */ }
 
   await new Promise((r) => setTimeout(r, 1400));
   state.busy = true;
@@ -782,6 +791,8 @@ async function boot() {
   if (!getSettings().geminiKey) openSettings();
   await flushQueue();
   listenAgain();
+  // se l'ultima volta l'app è stata chiusa senza saluto, il diario si scrive adesso
+  if (getSettings().geminiKey) brain.reflectIfPending();
 }
 
 $('btn-boot').addEventListener('click', boot);

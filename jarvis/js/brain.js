@@ -4,8 +4,8 @@ import { store, getSettings } from './store.js';
 import { declarations } from './tools.js';
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const DEFAULT_FAST = 'gemini-2.5-flash';
-const DEFAULT_DEEP = 'gemini-2.5-pro';
+const DEFAULT_FAST = 'gemini-flash-latest';
+const DEFAULT_DEEP = 'gemini-pro-latest';
 const COMPACT_AT = 140;      // oltre questo numero di messaggi, i più vecchi vengono riassunti
 const KEEP_RECENT = 60;      // messaggi recenti tenuti parola per parola
 const DEEP_COOLDOWN = 10 * 60 * 1000;
@@ -14,7 +14,15 @@ export class BrainError extends Error {
   constructor(kind, message) {
     super(message || kind);
     this.kind = kind;
+    logError(`${kind}: ${(message || '').slice(0, 400)}`);
   }
+}
+
+// Ultimi errori, leggibili dalle impostazioni (Diagnostica).
+export function logError(text) {
+  const log = store.get('errors', []);
+  log.push({ t: new Date().toLocaleTimeString('it-IT'), text: String(text) });
+  store.set('errors', log.slice(-12));
 }
 
 function systemPrompt({ brainstorm, summary }) {
@@ -66,6 +74,7 @@ ${summary ? `- Riassunto della parte precedente di questa conversazione: ${summa
 }
 
 function modelRank(name) {
+  if (/-latest$/.test(name) && !/lite/.test(name)) return 100; // alias che Google tiene sempre valido
   const m = name.match(/gemini-(\d+(?:\.\d+)?)/);
   const v = m ? parseFloat(m[1]) : 0;
   const stable = /preview|exp/.test(name) ? 0 : 0.05;
@@ -155,6 +164,13 @@ export class Brain {
     return store.get('models', { fast: DEFAULT_FAST, deep: DEFAULT_DEEP });
   }
 
+  // All'avvio: scopre i modelli disponibili per questa chiave (una volta al giorno).
+  async warmup() {
+    const m = store.get('models', null);
+    if (m && Date.now() - (m.ts || 0) < 24 * 3600 * 1000) return m;
+    try { return await this.discoverModels(); } catch (e) { return this.models(); }
+  }
+
   // Il modello profondo si usa in brainstorming, se non è "a riposo" per quota esaurita.
   pickModel(deep) {
     const override = getSettings().geminiModel;
@@ -211,7 +227,9 @@ export class Brain {
       }
     };
     for (;;) {
-      const { done, value } = await reader.read();
+      let chunk;
+      try { chunk = await reader.read(); } catch (e) { throw new BrainError('network', String(e)); }
+      const { done, value } = chunk;
       if (done) break;
       buf += dec.decode(value, { stream: true });
       let i;
@@ -235,20 +253,24 @@ export class Brain {
     let model = this.pickModel(deep);
     let thinking = true;
     for (let attempt = 0; attempt < 4; attempt++) {
-      const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true } } } : body;
+      // ragionamento leggero nelle chiacchiere, profondo in brainstorming
+      const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true, thinkingLevel: deep ? 'high' : 'low' } } } : body;
       try {
         if (stream) return await this.streamCall(model, b, onThought);
         return { parts: await this.simpleCall(model, b) };
       } catch (e) {
         if (e.kind === 'model' && !getSettings().geminiModel) {
           const m = await this.discoverModels();
-          model = deep ? m.deep : m.fast;
+          let next = deep ? m.deep : m.fast;
+          if (next === model && deep) next = m.fast; // il modello profondo non c'è: usa quello veloce
+          if (next === model) throw e; // già provato: niente da fare
+          model = next;
         } else if (e.kind === 'quota' && model !== this.models().fast && !getSettings().geminiModel) {
           store.set('deepCooldown', Date.now() + DEEP_COOLDOWN);
           model = this.models().fast;
         } else if (e.kind === 'no-thinking' && thinking) {
           thinking = false;
-        } else if (e.kind === 'overloaded' && attempt < 2) {
+        } else if ((e.kind === 'overloaded' || e.kind === 'network') && attempt < 2) {
           await new Promise((r) => setTimeout(r, 1500));
         } else {
           throw e;
@@ -291,7 +313,7 @@ export class Brain {
 
         const responses = [];
         for (const { functionCall } of calls) {
-          const { name, args = {} } = functionCall;
+          const { name, args = {}, id } = functionCall;
           onTool?.(name);
           let result;
           try {
@@ -300,7 +322,7 @@ export class Brain {
           } catch (e) {
             result = { errore: e.message || String(e) };
           }
-          responses.push({ functionResponse: { name, response: { result } } });
+          responses.push({ functionResponse: { name, response: { result }, ...(id ? { id } : {}) } });
         }
         this.history.push({ role: 'user', parts: responses });
       }
@@ -373,11 +395,17 @@ export class Brain {
 
   // Ricerca web con Google Search integrato in Gemini.
   async search(query) {
-    const { parts } = await this.generate({
+    let parts;
+    try {
+      ({ parts } = await this.generate({
       systemInstruction: { parts: [{ text: 'Rispondi in italiano con un riassunto conciso e fattuale dei risultati, con date quando rilevanti. Niente link.' }] },
       contents: [{ role: 'user', parts: [{ text: query }] }],
       tools: [{ google_search: {} }],
-    }, { stream: false });
+    }, { stream: false, deep: false }));
+    } catch (e) {
+      if (e.kind === 'quota') return 'La ricerca web non è inclusa nel piano gratuito di questa chiave: di\' al Signore che per ora non puoi cercare su internet, e rispondi con quello che sai.';
+      throw e;
+    }
     return parts.filter((p) => p.text).map((p) => p.text).join(' ').trim() || 'Nessun risultato.';
   }
 }

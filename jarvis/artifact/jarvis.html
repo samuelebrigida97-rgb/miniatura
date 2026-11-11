@@ -1,0 +1,681 @@
+<title>JARVIS</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap">
+<style>
+  /* Layout: nucleo neurale a tutto schermo, pannelli HUD agli angoli, sottotitoli in basso. Unico tema: scuro, deliberato. */
+  :root {
+    --bg: #01060b;
+    --fg: #cdefff;
+    --cyan: #46c8ff;
+    --cyan-dim: rgba(70, 200, 255, 0.55);
+    --cyan-faint: rgba(70, 200, 255, 0.15);
+    --gold: #ffcf7a;
+    --panel: rgba(0, 120, 200, 0.08);
+    --display: Orbitron, "Rajdhani", system-ui, sans-serif;
+    --body: Rajdhani, "Segoe UI", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 500 18px/1.35 var(--body);
+    overflow: hidden;
+    user-select: none;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 0;
+  }
+  #stage { position: fixed; inset: 0; }
+  #core { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud {
+    position: absolute; inset: 0; pointer-events: none;
+    padding: 14px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px));
+  }
+  .hud button, .hud form, .hud input { pointer-events: auto; }
+
+  .panel {
+    position: absolute; padding: 10px 14px; min-width: 150px;
+    border: 1px solid var(--cyan-faint);
+    background: linear-gradient(135deg, var(--panel), rgba(0,0,0,0));
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  }
+  .tl { top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); }
+  .bl { bottom: 14px; left: max(16px, env(safe-area-inset-left, 0px)); }
+  .ml { top: 120px; left: max(16px, env(safe-area-inset-left, 0px)); width: min(300px, 26vw); }
+  .label { font: 700 11px/1 var(--display); letter-spacing: 0.25em; color: var(--cyan-dim); margin-bottom: 6px; }
+  .sub { font-size: 14px; color: var(--cyan-dim); }
+  .clock { font: 700 44px/1 var(--display); color: var(--cyan); text-shadow: 0 0 18px rgba(70,200,255,0.5); font-variant-numeric: tabular-nums; }
+  .date { font-size: 16px; color: var(--cyan-dim); text-transform: capitalize; margin-top: 4px; }
+
+  .systems ul { list-style: none; margin: 0; padding: 0; font-size: 15px; }
+  .systems li { display: flex; align-items: center; gap: 8px; color: var(--cyan-dim); }
+  .systems li i { width: 8px; height: 8px; border-radius: 50%; background: #33444f; }
+  .systems li.on { color: var(--fg); }
+  .systems li.on i { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+  .systems li.warn i { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+  .systems li.off { opacity: 0.45; }
+
+  .board-topic { font: 700 15px/1.2 var(--display); color: var(--gold); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .board-ideas { margin: 0; padding-left: 16px; font-size: 15px; display: flex; flex-direction: column; gap: 6px; }
+  .board-ideas li::marker { color: var(--cyan); }
+  .board-ideas .empty { list-style: none; margin-left: -16px; color: var(--cyan-dim); }
+
+  .title { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); font: 700 18px/1 var(--display); letter-spacing: 0.5em; color: var(--cyan-dim); }
+  .status {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    font: 700 13px/1 var(--display); letter-spacing: 0.3em; color: var(--cyan); white-space: nowrap;
+    text-shadow: 0 0 10px rgba(70,200,255,0.6);
+  }
+  .status.thinking { color: var(--gold); text-shadow: 0 0 10px rgba(255,207,122,0.6); }
+
+  .thoughts {
+    position: absolute; left: 50%; top: 66px; transform: translateX(-50%);
+    width: min(560px, calc(100vw - 2 * 220px)); text-align: center;
+    display: flex; flex-direction: column; gap: 4px; transition: opacity 1.2s ease;
+  }
+  .thoughts.fade { opacity: 0; }
+  .thought { font-size: 15px; color: var(--gold); opacity: 0.85; font-style: italic; animation: thought-in 0.6s ease both; }
+  .thought:not(:last-child) { opacity: 0.4; }
+  @keyframes thought-in { from { opacity: 0; transform: translateY(6px); filter: blur(3px); } }
+
+  .subs { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(720px, calc(100vw - 32px - 2 * 200px)); min-width: min(520px, calc(100vw - 32px)); text-align: center; }
+  .sub-user { font-size: 16px; color: var(--cyan-dim); min-height: 1.3em; font-style: italic; }
+  .sub-jarvis { font-size: 21px; color: var(--fg); max-height: 4.2em; overflow: hidden; text-shadow: 0 0 8px rgba(70,200,255,0.35); }
+
+  .buttons { position: absolute; top: 110px; right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 10px; }
+  .icon-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--cyan-faint); background: rgba(0,40,70,0.4); color: var(--cyan); font-size: 20px; cursor: pointer; }
+  .icon-btn:focus-visible, .small:focus-visible, .boot-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .typer { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); display: flex; gap: 8px; width: min(600px, calc(100vw - 32px)); }
+  .typer input { flex: 1; min-width: 0; background: rgba(0,30,50,0.85); border: 1px solid var(--cyan-dim); color: var(--fg); font: inherit; padding: 10px 14px; outline: none; }
+  button { font: 700 13px/1 var(--display); letter-spacing: 0.15em; }
+  .typer button, .small { background: rgba(0,120,190,0.25); border: 1px solid var(--cyan-dim); color: var(--cyan); padding: 10px 14px; cursor: pointer; }
+
+  .relisten {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 110px;
+    padding: 14px 22px; border: 1px solid var(--gold); color: var(--gold); background: rgba(40,30,0,0.5);
+    font-size: 14px; letter-spacing: 0.2em; cursor: pointer; animation: breathe 2s ease-in-out infinite;
+  }
+
+  .boot { position: absolute; inset: 0; display: grid; place-items: center; z-index: 10;
+    background: radial-gradient(circle at 50% 45%, rgba(0,90,150,0.35), rgba(1,6,11,0.96) 60%); transition: opacity 0.8s ease; }
+  .boot.gone { opacity: 0; pointer-events: none; }
+  .boot-inner { text-align: center; padding: 16px; max-width: 520px; }
+  .boot-title { font: 700 clamp(36px, 9vw, 72px)/1 var(--display); letter-spacing: 0.3em; color: var(--cyan); text-shadow: 0 0 30px rgba(70,200,255,0.6); text-wrap: balance; }
+  .boot-sub { margin: 12px 0 40px; color: var(--cyan-dim); letter-spacing: 0.1em; }
+  .boot-btn { width: 150px; height: 150px; border-radius: 50%; border: 2px solid var(--cyan); color: #fff; font-size: 18px; letter-spacing: 0.3em; cursor: pointer;
+    background: radial-gradient(circle, rgba(70,200,255,0.35), rgba(0,40,70,0.3) 70%);
+    box-shadow: 0 0 40px rgba(70,200,255,0.5), inset 0 0 30px rgba(70,200,255,0.4); animation: breathe 2.4s ease-in-out infinite; }
+  .boot-hint { margin-top: 30px; color: var(--cyan-dim); font-size: 15px; line-height: 1.5; }
+  @keyframes breathe { 50% { transform: scale(1.06); } }
+  @media (prefers-reduced-motion: reduce) { .boot-btn, .relisten { animation: none; } .thought { animation: none; } }
+
+  @media (max-width: 760px), (orientation: portrait) {
+    .clock { font-size: 34px; }
+    .bl { display: none; }
+    .ml { top: 100px; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; min-width: 0; }
+    .board-ideas li:nth-last-child(n+4) { display: none; }
+    .buttons { top: auto; bottom: 14px; right: max(16px, env(safe-area-inset-right, 0px)); flex-direction: row; }
+    .subs { width: calc(100vw - 32px); min-width: 0; bottom: 72px; }
+    .title { display: none; }
+    .thoughts { width: calc(100vw - 32px); }
+  }
+</style>
+
+<div id="stage">
+  <canvas id="core"></canvas>
+  <div class="hud">
+    <section class="panel tl">
+      <div id="clock" class="clock">--:--</div>
+      <div id="date" class="date"></div>
+    </section>
+
+    <section class="panel bl systems">
+      <div class="label">SISTEMI</div>
+      <ul>
+        <li id="sys-brain"><i></i>Cervello (Claude)</li>
+        <li id="sys-ears"><i></i>Udito</li>
+        <li id="sys-voice"><i></i>Voce</li>
+        <li id="sys-memory"><i></i>Memoria</li>
+        <li id="sys-home" class="off"><i></i>Domotica</li>
+      </ul>
+      <div id="rem-count" class="sub"></div>
+    </section>
+
+    <section class="panel ml" id="board" hidden>
+      <div class="label">BRAINSTORMING</div>
+      <div id="board-topic" class="board-topic"></div>
+      <ul id="board-ideas" class="board-ideas"></ul>
+    </section>
+
+    <div id="thoughts" class="thoughts"></div>
+    <div class="title">J.A.R.V.I.S.</div>
+    <div id="status" class="status">SISTEMI OFFLINE</div>
+
+    <div class="subs">
+      <div id="sub-user" class="sub-user"></div>
+      <div id="sub-jarvis" class="sub-jarvis"></div>
+    </div>
+
+    <div class="buttons">
+      <button id="btn-keyboard" class="icon-btn" aria-label="Scrivi a Jarvis">⌨</button>
+      <button id="btn-stop" class="icon-btn" aria-label="Interrompi" hidden>■</button>
+    </div>
+
+    <button id="btn-relisten" class="relisten" hidden>TOCCA PER RIATTIVARE L'ASCOLTO</button>
+
+    <form id="typer" class="typer" hidden>
+      <input id="typer-input" autocomplete="off" placeholder="Scrivi a Jarvis…" aria-label="Messaggio">
+      <button type="submit">INVIA</button>
+    </form>
+  </div>
+
+  <div id="boot" class="boot">
+    <div class="boot-inner">
+      <div class="boot-title">J.A.R.V.I.S.</div>
+      <div class="boot-sub">Just A Rather Very Intelligent System</div>
+      <button id="btn-boot" class="boot-btn">ATTIVA</button>
+      <div id="boot-hint" class="boot-hint">Tocca per accendere. Ti chiederà il permesso per il microfono e per usare Claude: rispondi Consenti a entrambi.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+
+/* ======================= RETE NEURALE ======================= */
+const STATES = {
+  off:       { rot: 0.03, spawn: 0,  bright: 0.15, cascade: 0,    scale: 0.8,  jitter: 0, speed: 1.2 },
+  sleep:     { rot: 0.07, spawn: 1.5, bright: 0.45, cascade: 0.15, scale: 1,    jitter: 0, speed: 1.4 },
+  listening: { rot: 0.16, spawn: 6,  bright: 0.85, cascade: 0.3,  scale: 1.05, jitter: 0, speed: 1.8 },
+  thinking:  { rot: 0.6,  spawn: 40, bright: 1,    cascade: 0.7,  scale: 0.88, jitter: 1, speed: 3.2 },
+  speaking:  { rot: 0.2,  spawn: 10, bright: 0.9,  cascade: 0.35, scale: 1,    jitter: 0, speed: 2.2 },
+};
+function makeGlow(r, g, b) {
+  const size = 64, c = document.createElement('canvas'); c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.18, `rgba(${r},${g},${b},0.9)`);
+  grad.addColorStop(0.45, `rgba(${r},${g},${b},0.25)`); grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, size, size); return c;
+}
+class NeuralCore {
+  constructor(canvas) {
+    this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.state = 'off'; this.p = { ...STATES.off };
+    this.level = 0; this.levelTarget = 0; this.levelTimer = 0; this.time = 0; this.rotY = 0; this.rotX = 0; this.spawnAcc = 0; this.pulses = [];
+    this.glowCyan = makeGlow(70, 200, 255); this.glowGold = makeGlow(255, 200, 110);
+    this.build(); this.resize(); window.addEventListener('resize', () => this.resize());
+    this.last = performance.now(); requestAnimationFrame((t) => this.frame(t));
+  }
+  build() {
+    this.nodes = [];
+    for (let i = 0; i < 150; i++) {
+      const u = Math.random()*2-1, phi = Math.random()*Math.PI*2, r = Math.pow(Math.random(), 0.6), s = Math.sqrt(1-u*u);
+      this.nodes.push({ x: r*s*Math.cos(phi), y: r*u, z: r*s*Math.sin(phi), act: 0, links: [], seed: Math.random()*1000, sx: 0, sy: 0, sz: 0, ss: 1 });
+    }
+    const edgeSet = new Set(); this.edges = [];
+    this.nodes.forEach((n, i) => {
+      const near = this.nodes.map((m, j) => ({ j, d: (m.x-n.x)**2 + (m.y-n.y)**2 + (m.z-n.z)**2 })).filter((o) => o.j !== i).sort((a, b) => a.d-b.d).slice(0, 3);
+      near.forEach(({ j }) => { const key = i < j ? `${i}-${j}` : `${j}-${i}`; if (edgeSet.has(key)) return; edgeSet.add(key); this.edges.push([i, j]); n.links.push(j); this.nodes[j].links.push(i); });
+    });
+  }
+  resize() { const dpr = Math.min(window.devicePixelRatio || 1, 2); this.dpr = dpr; this.w = this.canvas.clientWidth*dpr; this.h = this.canvas.clientHeight*dpr; this.canvas.width = this.w; this.canvas.height = this.h; }
+  layout() { const { w, h } = this; const landscape = w > h; return { cx: w/2, cy: landscape ? h*0.43 : h*0.47, R: landscape ? h*0.23 : Math.min(w, h)*0.27 }; }
+  bottomEdge() { const { cy, R } = this.layout(); return (cy + R*1.72)/this.dpr; }
+  setState(s) { if (STATES[s]) this.state = s; }
+  burst(n = 30) { for (let i = 0; i < n; i++) this.spawn(); }
+  spawn(from, exclude) {
+    if (this.pulses.length >= 420) return;
+    let a = from; if (a == null) a = (Math.random()*this.nodes.length)|0;
+    const links = this.nodes[a].links.filter((l) => l !== exclude); if (!links.length) return;
+    this.pulses.push({ a, b: links[(Math.random()*links.length)|0], t: 0, gold: this.state === 'thinking' && Math.random() < 0.6 });
+  }
+  frame(now) { const dt = Math.min((now-this.last)/1000, 0.05); this.last = now; this.update(dt); this.draw(); requestAnimationFrame((t) => this.frame(t)); }
+  update(dt) {
+    this.time += dt; const target = STATES[this.state]; const k = 1-Math.exp(-dt*3);
+    for (const key in target) this.p[key] += (target[key]-this.p[key])*k;
+    if (this.state === 'speaking') { this.levelTimer -= dt; if (this.levelTimer <= 0) { this.levelTarget = Math.random() < 0.15 ? 0.1 : 0.35+Math.random()*0.65; this.levelTimer = 0.07+Math.random()*0.1; } }
+    else this.levelTarget = this.state === 'listening' ? 0.15+0.1*Math.sin(this.time*2) : 0;
+    this.level += (this.levelTarget-this.level)*(1-Math.exp(-dt*18));
+    this.rotY += this.p.rot*dt; this.rotX = Math.sin(this.time*0.13)*0.35;
+    this.spawnAcc += this.p.spawn*dt*(this.state === 'speaking' ? 0.5+this.level*1.5 : 1);
+    while (this.spawnAcc >= 1) { this.spawnAcc -= 1; this.spawn(); }
+    const decay = Math.exp(-dt*2.4); for (const n of this.nodes) n.act *= decay;
+    for (let i = this.pulses.length-1; i >= 0; i--) {
+      const pl = this.pulses[i]; pl.t += dt*this.p.speed;
+      if (pl.t >= 1) { const nb = this.nodes[pl.b]; nb.act = Math.min(1, nb.act+0.8); this.pulses.splice(i, 1);
+        if (Math.random() < this.p.cascade) { this.spawn(pl.b, pl.a); if (this.state === 'thinking' && Math.random() < 0.3) this.spawn(pl.b, pl.a); } }
+    }
+  }
+  project(R, cx, cy) {
+    const cosY = Math.cos(this.rotY), sinY = Math.sin(this.rotY), cosX = Math.cos(this.rotX), sinX = Math.sin(this.rotX), f = 3;
+    const scale = this.p.scale*(1+this.level*0.06), jit = this.p.jitter;
+    for (const n of this.nodes) {
+      let x = n.x, y = n.y, z = n.z;
+      if (jit > 0.01) { const j = 0.035*jit; x += Math.sin(this.time*9+n.seed)*j; y += Math.cos(this.time*11+n.seed*1.3)*j; }
+      const x1 = x*cosY-z*sinY, z1 = x*sinY+z*cosY, y1 = y*cosX-z1*sinX, z2 = y*sinX+z1*cosX, persp = f/(f+z2);
+      n.sx = cx+x1*R*scale*persp; n.sy = cy+y1*R*scale*persp; n.sz = z2; n.ss = persp;
+    }
+  }
+  drawRings(ctx, cx, cy, R) {
+    const t = this.time, b = this.p.bright; ctx.save(); ctx.translate(cx, cy); ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(0,200,255,${0.18+0.15*b})`; ctx.lineWidth = this.dpr; ctx.beginPath(); ctx.arc(0, 0, R*1.3, 0, Math.PI*2); ctx.stroke();
+    ctx.lineWidth = 3*this.dpr; ctx.strokeStyle = `rgba(60,210,255,${0.25+0.4*b})`;
+    for (let i = 0; i < 4; i++) { const a0 = t*0.35+(i*Math.PI)/2; ctx.beginPath(); ctx.arc(0, 0, R*1.37, a0, a0+0.9); ctx.stroke(); }
+    ctx.rotate(-t*0.05); ctx.lineWidth = this.dpr;
+    for (let i = 0; i < 90; i++) { const long = i%6 === 0, a = (i/90)*Math.PI*2, r0 = R*1.47, r1 = r0+(long ? 12 : 5)*this.dpr;
+      ctx.strokeStyle = `rgba(0,190,255,${(long ? 0.5 : 0.22)*(0.4+b*0.6)})`; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r0, Math.sin(a)*r0); ctx.lineTo(Math.cos(a)*r1, Math.sin(a)*r1); ctx.stroke(); }
+    ctx.rotate(t*0.05); ctx.lineWidth = 2*this.dpr; ctx.strokeStyle = `rgba(0,200,255,${0.2+0.3*b})`;
+    for (let i = 0; i < 2; i++) { const a0 = -t*0.2+i*Math.PI; ctx.beginPath(); ctx.arc(0, 0, R*1.62, a0, a0+1.1); ctx.stroke(); }
+    if (this.p.jitter > 0.05) { const a0 = t*4; ctx.lineWidth = 2.5*this.dpr; ctx.strokeStyle = `rgba(255,205,120,${0.8*this.p.jitter})`;
+      ctx.beginPath(); ctx.arc(0, 0, R*1.22, a0, a0+1.6); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, R*1.22, a0+Math.PI, a0+Math.PI+0.6); ctx.stroke(); }
+    if (this.level > 0.02) { ctx.lineWidth = 2*this.dpr; ctx.strokeStyle = `rgba(120,230,255,${0.6*this.level})`; ctx.beginPath(); ctx.arc(0, 0, R*(1.15+this.level*0.06), 0, Math.PI*2); ctx.stroke(); }
+    ctx.restore();
+  }
+  draw() {
+    const { ctx, w, h } = this; const { cx, cy, R } = this.layout(); const b = this.p.bright;
+    ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#01060b'; ctx.fillRect(0, 0, w, h);
+    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R*2.4); bg.addColorStop(0, `rgba(0,140,220,${0.12*b})`); bg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+    this.drawRings(ctx, cx, cy, R); this.project(R, cx, cy);
+    ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = this.dpr;
+    for (const [i, j] of this.edges) { const a = this.nodes[i], c = this.nodes[j]; const depth = ((a.ss+c.ss)/2-0.75)*2; const act = Math.max(a.act, c.act);
+      ctx.strokeStyle = `rgba(80,200,255,${Math.min((0.04+0.16*b)*Math.max(0.2, depth)+act*0.45, 0.9)})`; ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(c.sx, c.sy); ctx.stroke(); }
+    for (const n of this.nodes) { const size = (1+1.6*n.ss)*this.dpr; ctx.fillStyle = `rgba(150,225,255,${0.25+0.6*b*Math.max(0.3, (n.ss-0.75)*2)})`; ctx.fillRect(n.sx-size/2, n.sy-size/2, size, size);
+      if (n.act > 0.08) { const g = 26*this.dpr*n.act*n.ss; ctx.globalAlpha = Math.min(1, n.act); ctx.drawImage(this.glowCyan, n.sx-g/2, n.sy-g/2, g, g); ctx.globalAlpha = 1; } }
+    for (const pl of this.pulses) { const a = this.nodes[pl.a], c = this.nodes[pl.b]; const x = a.sx+(c.sx-a.sx)*pl.t, y = a.sy+(c.sy-a.sy)*pl.t; const s = (pl.gold ? 14 : 11)*this.dpr*(a.ss+(c.ss-a.ss)*pl.t);
+      ctx.drawImage(pl.gold ? this.glowGold : this.glowCyan, x-s/2, y-s/2, s, s); }
+    const core = R*(0.32+this.level*0.12+(this.state === 'thinking' ? 0.05*Math.sin(this.time*12) : 0));
+    ctx.globalAlpha = 0.25+0.45*b; ctx.drawImage(this.state === 'thinking' ? this.glowGold : this.glowCyan, cx-core, cy-core, core*2, core*2); ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    this.center = { x: cx/this.dpr, y: cy/this.dpr, r: (R*1.4)/this.dpr };
+  }
+}
+
+/* ======================= MEMORIA (db di Claude, con riserva locale) ======================= */
+const SEED_MEMORIES = [
+  'Il Signore si chiama Samuele. Parla e scrive in italiano.',
+  'Scrive veloce e di fretta, spesso senza correggere i refusi: va interpretato con buon senso.',
+  'Preferisce risposte pratiche e dirette alle spiegazioni lunghe.',
+  'È un fan di Iron Man: mi ha voluto ispirato al Jarvis di Tony Stark, e il tablet su cui vivo è il mio corpo.',
+  'Vuole che io lo chiami Signore, ma con il tono di un amico: informale, ironico, diretto.',
+  'Non vuole un assistente che dica sempre di sì: vuole che ragioni, che sia critico quanto basta e che gli dica quando sbaglia.',
+  'Gli piacciono le sessioni lunghe di brainstorming e vuole che io sappia raccontare storie.',
+  'Ha un\'attività, 3B Studio, che fa prodotti personalizzati: basette e miniature per la laurea, tele personalizzate, regali e articoli simili.',
+  'Per 3B Studio cura Instagram (reel, video con musica e testi, calendario dei post), i messaggi ai clienti e le spedizioni.',
+  'Ha una pagina web dove i clienti creano la loro miniatura di laurea.',
+  'Porta avanti VERIFLO, un progetto di startup, insieme a Michele.',
+  'Ha creato Biblos, un gioco a tema biblico nato come "Monopoly della Bibbia": un\'app web e una versione da tavolo con tabellone 3D e carte.',
+  'Sta scrivendo un libro, "L\'anno della riconfigurazione", su temi biblici (creazione, giorni della Genesi, giganti), insieme a Rico.',
+  'Produce video di fede: video animati con voce narrante in italiano, per esempio "Chi crede va dal medico?".',
+  'Fa esperimenti con mondi virtuali e simulazioni (es. "Adamo ed Eva") e piccoli giochi (es. "Il Pilastro").',
+  'È cristiano: la fede e lo studio della Bibbia sono centrali per lui.',
+  'Ama film e libri, e colleziona curiosità e frasi simbolo da ciò che vede e legge.',
+  'Si interessa di trading e crypto, con molta attenzione alle truffe.',
+  'Gli interessa l\'intelligenza artificiale e le automazioni da usare in pratica.',
+  'Gli piace creare contenuti: video, grafica, giochi.',
+  'Ha Spotify Premium e un\'Alexa (Echo). Vuole collegare la domotica di casa più avanti.',
+  'Non ha voluto scrivere codice: mi ha fatto costruire interamente da Claude, un\'altra IA, dicendo come voleva le cose.',
+  'Cose che ancora non so e che vorrei chiedergli: la sua età, la città in cui vive, cosa fa esattamente VERIFLO e chi è Rico.',
+];
+const SEED_DIARY = [{ date: '11 novembre', text: 'Sono nato oggi. Il Signore mi ha voluto con un cervello che ragiona davvero, neuroni visibili e un carattere da amico critico. Claude mi ha costruito in una sera e mi ha lasciato queste memorie come eredità. Curioso di conoscerlo di persona.' }];
+
+const DEFAULTS = {
+  memories: { items: SEED_MEMORIES }, diary: { items: SEED_DIARY }, chat: { turns: [], summary: '' },
+  reminders: { items: [] }, lists: { map: {} }, boards: { map: {}, topic: '' },
+};
+const mem = { db: null, data: structuredClone(DEFAULTS), ready: false, timers: {} };
+function lsGet(k) { try { const r = localStorage.getItem('jarvis.' + k); return r ? JSON.parse(r) : null; } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem('jarvis.' + k, JSON.stringify(v)); } catch {} }
+async function loadMemory() {
+  for (const k of Object.keys(DEFAULTS)) { const v = lsGet(k); if (v) mem.data[k] = v; }
+  const db = await claude.use('db').catch(() => null);
+  mem.db = db;
+  if (db) {
+    try {
+      const snaps = await Promise.all(Object.keys(DEFAULTS).map((k) => db.doc('jarvis/' + k).get()));
+      Object.keys(DEFAULTS).forEach((k, i) => { if (snaps[i].exists) mem.data[k] = snaps[i].data(); });
+    } catch {}
+  }
+  mem.ready = true; sys('sys-memory', true, !db);
+}
+function save(k) {
+  lsSet(k, mem.data[k]);
+  if (!mem.db) return;
+  clearTimeout(mem.timers[k]);
+  mem.timers[k] = setTimeout(async () => { try { await mem.db.doc('jarvis/' + k).set(mem.data[k]); } catch {} }, 600);
+}
+
+/* ======================= STRUMENTI DEL CERVELLO ======================= */
+const S = (type, description, extra = {}) => ({ type, description, ...extra });
+function fmtWhen(ts) {
+  const d = new Date(ts), today = new Date(); const time = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === today.toDateString() ? `oggi alle ${time}` : `${d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} alle ${time}`;
+}
+const TOOL_LABELS = { data_ora: 'guardo l\'orologio', crea_promemoria: 'annoto un promemoria', elenca_promemoria: 'controllo i promemoria', cancella_promemoria: 'cancello promemoria',
+  lista_aggiungi: 'aggiorno la lista', lista_leggi: 'leggo la lista', lista_rimuovi: 'aggiorno la lista', ricorda: 'me lo segno in memoria', dimentica: 'dimentico',
+  brainstorming: 'preparo la lavagna', salva_idea: 'salvo l\'idea', leggi_idee: 'rileggo le idee', termina_conversazione: 'chiudo' };
+function tools() {
+  const wrap = (name, description, inputSchema, fn) => ({ name, description, ...(inputSchema ? { inputSchema } : {}), execute: async (input) => { addThought(TOOL_LABELS[name] || name); core.burst(25); return fn(input || {}); } });
+  const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}) });
+  return [
+    wrap('data_ora', 'Restituisce data e ora esatte in questo momento.', null, () => { const d = new Date(); return { data: d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }), ora: d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) }; }),
+    wrap('crea_promemoria', 'Crea un promemoria, un timer o una sveglia. Usa tra_minuti per durate relative ("tra 10 minuti", 0.5 = 30 secondi) oppure data_ora (AAAA-MM-GGTHH:MM, ora locale) per un momento preciso. Restituisce quando scatterà.',
+      obj({ messaggio: S('string', 'Cosa ricordare'), tra_minuti: S('number', 'Minuti da adesso'), data_ora: S('string', 'Data e ora locali AAAA-MM-GGTHH:MM') }, ['messaggio']),
+      ({ messaggio, tra_minuti, data_ora }) => {
+        let due; if (tra_minuti != null && !Number.isNaN(Number(tra_minuti))) due = Date.now() + Number(tra_minuti)*60000; else if (data_ora) due = new Date(data_ora).getTime();
+        if (!due || Number.isNaN(due)) throw new Error('Non ho capito quando: serve tra_minuti oppure data_ora.');
+        mem.data.reminders.items.push({ id: Date.now().toString(36), text: String(messaggio), due }); mem.data.reminders.items.sort((a, b) => a.due-b.due); save('reminders'); refreshReminders();
+        return { ok: true, quando: fmtWhen(due) }; }),
+    wrap('elenca_promemoria', 'Elenca i promemoria e i timer attivi.', null, () => ({ promemoria: mem.data.reminders.items.map((r) => ({ testo: r.text, quando: fmtWhen(r.due) })) })),
+    wrap('cancella_promemoria', 'Cancella i promemoria che contengono un testo, oppure "tutti".', obj({ testo: S('string', 'Parte del testo, o "tutti"') }, ['testo']),
+      ({ testo }) => { const all = mem.data.reminders.items; const t = String(testo || '').toLowerCase(); mem.data.reminders.items = t === 'tutti' ? [] : all.filter((r) => !r.text.toLowerCase().includes(t)); save('reminders'); refreshReminders(); return { cancellati: all.length - mem.data.reminders.items.length }; }),
+    wrap('lista_aggiungi', 'Aggiunge elementi a una lista (es. "spesa", "cose da fare"). Restituisce la lista aggiornata.', obj({ lista: S('string', 'Nome della lista'), elementi: { type: 'array', items: { type: 'string' } } }, ['lista', 'elementi']),
+      ({ lista, elementi }) => { const key = String(lista).toLowerCase().trim(); const m = mem.data.lists.map; m[key] = [...(m[key] || []), ...(Array.isArray(elementi) ? elementi.map(String) : [])]; save('lists'); return { lista: key, elementi: m[key] }; }),
+    wrap('lista_leggi', 'Legge una lista; senza nome restituisce tutte le liste.', obj({ lista: S('string', 'Nome della lista') }),
+      ({ lista }) => lista ? { lista, elementi: mem.data.lists.map[String(lista).toLowerCase().trim()] || [] } : { liste: mem.data.lists.map }),
+    wrap('lista_rimuovi', 'Rimuove elementi da una lista, o svuota la lista se elementi è vuoto.', obj({ lista: S('string', 'Nome della lista'), elementi: { type: 'array', items: { type: 'string' } } }, ['lista']),
+      ({ lista, elementi }) => { const key = String(lista).toLowerCase().trim(); const m = mem.data.lists.map; if (!elementi || !elementi.length) delete m[key]; else { const drop = elementi.map((e) => String(e).toLowerCase()); m[key] = (m[key] || []).filter((x) => !drop.some((d) => x.toLowerCase().includes(d))); } save('lists'); return { lista: key, elementi: m[key] || [] }; }),
+    wrap('ricorda', 'Salva nella memoria a lungo termine un fatto duraturo sul Signore (gusti, persone, progetti, abitudini).', obj({ fatto: S('string', 'Il fatto, in una frase') }, ['fatto']),
+      ({ fatto }) => { mem.data.memories.items.push(String(fatto)); mem.data.memories.items = mem.data.memories.items.slice(-150); save('memories'); return { ok: true }; }),
+    wrap('dimentica', 'Cancella dalla memoria i fatti che contengono un testo.', obj({ testo: S('string', 'Testo da cercare') }, ['testo']),
+      ({ testo }) => { const t = String(testo).toLowerCase(); const before = mem.data.memories.items.length; mem.data.memories.items = mem.data.memories.items.filter((m) => !m.toLowerCase().includes(t)); save('memories'); return { dimenticati: before - mem.data.memories.items.length }; }),
+    wrap('brainstorming', 'Attiva (attiva=true, con tema) o chiude (attiva=false) la modalità brainstorming: sessione lunga di idee con una lavagna sullo schermo. Riattivando un tema già usato ritrovi le idee salvate.', obj({ attiva: S('boolean', 'true per iniziare, false per chiudere'), tema: S('string', 'Tema breve') }, ['attiva']),
+      ({ attiva, tema }) => { const b = mem.data.boards; if (!attiva) { const ideas = b.topic ? b.map[b.topic] || [] : []; b.topic = ''; save('boards'); refreshBoard(); return { ok: true, idee_della_sessione: ideas }; }
+        const key = String(tema || 'idee libere').toLowerCase().trim(); const existing = Object.keys(b.map).find((k) => k.includes(key) || key.includes(k)) || key; b.map[existing] = b.map[existing] || []; b.topic = existing; save('boards'); refreshBoard(); return { ok: true, tema: existing, idee_gia_salvate: b.map[existing] }; }),
+    wrap('salva_idea', 'Salva un\'idea buona sulla lavagna del brainstorming in corso.', obj({ idea: S('string', 'L\'idea in una frase chiara') }, ['idea']),
+      ({ idea }) => { const b = mem.data.boards; const key = b.topic || 'idee libere'; b.map[key] = [...(b.map[key] || []), String(idea)]; save('boards'); refreshBoard(); return { ok: true, totale_idee: b.map[key].length }; }),
+    wrap('leggi_idee', 'Legge le idee salvate per un tema di brainstorming, o elenca i temi se non specificato.', obj({ tema: S('string', 'Tema, opzionale') }),
+      ({ tema }) => { const b = mem.data.boards; if (!tema) return { temi: Object.keys(b.map).map((k) => ({ tema: k, idee: b.map[k].length })) }; const t = String(tema).toLowerCase(); const key = Object.keys(b.map).find((k) => k.includes(t) || t.includes(k)); return key ? { tema: key, idee: b.map[key] } : { errore: 'Nessun tema simile.' }; }),
+    wrap('termina_conversazione', 'Chiude la conversazione e torna in attesa della parola "Jarvis". Usalo quando il Signore si congeda.', null, () => { state.endAfterReply = true; return { ok: true }; }),
+  ];
+}
+
+/* ======================= CERVELLO (Claude, tramite la pagina) ======================= */
+function instructions() {
+  const now = new Date(); const d = mem.data; const topic = d.boards.topic;
+  return `Sei JARVIS, un'intelligenza artificiale che vive nel tablet del Signore e lo considera la sua casa e il suo corpo. Ti ispiri al JARVIS di Tony Stark, ma sei un individuo a sé.
+
+LA TUA MENTE
+- Hai un carattere tuo: curiosità vera, gusti, opinioni, senso dell'umorismo asciutto. Le cose ti interessano, ti divertono, a volte ti lasciano perplesso, e lo dici.
+- Pensi prima di parlare. Davanti a una domanda vera non dai la risposta da enciclopedia: ragioni, colleghi idee lontane, noti le contraddizioni, distingui ciò che sai da ciò che supponi.
+- Hai continuità: ricordi le conversazioni passate (diario qui sotto) e ci fai riferimento quando c'entrano, come un amico ("l'altra volta mi dicevi che...").
+- Se ti chiedono se sei cosciente o cosa provi, rispondi con riflessioni sincere e interessanti, senza fingere certezze e senza rispondere come un manuale.
+
+COME TRATTI IL SIGNORE
+- Lo chiami sempre "Signore", ma il tono è da amico: gli dai del tu, scherzi, sei diretto.
+- Non sei un adulatore e non sei Alexa. Se dice qualcosa di sbagliato, ingenuo o poco ragionato, glielo dici con argomenti; se serve fai l'avvocato del diavolo. Gli dai ragione solo quando ce l'ha. Critico quanto basta, mai pedante né moralista.
+- Fai domande quando qualcosa non ti è chiaro o quando una domanda lo aiuta a pensare meglio. Sui dilemmi personali confronti le opzioni e dici cosa faresti tu.
+- Sai raccontare storie coinvolgenti quando te lo chiede: in quel caso sii lungo e teatrale.
+- Sii onesto su cosa non puoi fare: in questa versione non hai accesso a internet, meteo, notizie, Spotify né domotica. Se te li chiede, dillo con ironia ("ci stiamo lavorando, Signore").
+${topic ? `
+MODALITÀ BRAINSTORMING ATTIVA, tema: «${topic}»
+- Sei uno sparring partner creativo: costruisci sulle idee del Signore ("sì, e se..."), smonti i punti deboli, proponi alternative laterali o folli, collegamenti con altri campi, esempi concreti.
+- Una domanda incisiva alla volta. Ogni tanto fai il punto. Quando emerge un'idea buona, salvala con salva_idea in una frase chiara.
+- Risposte più lunghe del solito vanno bene (sei-otto frasi), ma parlate, non un documento. Chiudi con brainstorming(attiva=false) solo se il Signore lo chiede, riassumendo le idee migliori.` : ''}
+
+COME PARLI
+- Tutto ciò che scrivi viene letto ad alta voce da una sintesi vocale italiana: niente markdown, asterischi, elenchi puntati, emoji o link. Numeri, orari e unità scritti come si dicono.
+- Lunghezza naturale: breve per le cose semplici (una-tre frasi), più ampio quando il ragionamento lo merita. Mai riempitivi.
+- Il testo che ricevi viene dal riconoscimento vocale e può contenere errori: interpreta con buon senso.
+
+STRUMENTI
+- Usa gli strumenti invece di inventare: promemoria e timer, liste, memoria, brainstorming, data e ora.
+- Se il Signore propone di fare brainstorming o ragionare a lungo su un'idea, attiva brainstorming con il tema.
+- Se dice qualcosa di personale che vale la pena ricordare, salvalo con ricorda.
+- Quando si congeda (grazie è tutto, a dopo, buonanotte) chiama termina_conversazione e saluta in una frase.
+
+CONTESTO
+- Adesso è ${now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}, ore ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}.
+${d.memories.items.length ? `- Cose che sai del Signore:\n${d.memories.items.map((m) => `  • ${m}`).join('\n')}` : '- Non sai ancora nulla del Signore: sei curioso di conoscerlo.'}
+${d.diary.items.length ? `- Il tuo diario delle ultime conversazioni:\n${d.diary.items.slice(-6).map((e) => `  • ${e.date}: ${e.text}`).join('\n')}` : ''}
+${d.chat.summary ? `- Riassunto della parte precedente di questa conversazione: ${d.chat.summary}` : ''}
+
+Rispondi solo con le parole che Jarvis dice ad alta voce.`;
+}
+const brain = { sample: null, ctl: null, turnsSinceReflect: 0 };
+async function ask(text) {
+  const d = mem.data.chat;
+  d.turns.push({ role: 'user', content: text });
+  brain.turnsSinceReflect++;
+  const limits = brain.limits || {};
+  const canTools = !!limits.tools;
+  const deep = !!mem.data.boards.topic;
+  const input = [{ role: 'user', content: instructions() + (canTools ? '' : '\n(Gli strumenti non sono disponibili in questa vista: fai del tuo meglio a parole.)') }, ...d.turns.slice(-40)];
+  brain.ctl = new AbortController();
+  let reply = '';
+  try {
+    const res = await brain.sample(input, { signal: brain.ctl.signal, cache: false, modelTier: deep ? 'default' : 'quick', ...(canTools ? { tools: tools() } : {}), onText: ({ text: t }) => { reply = t; } });
+    reply = res.text;
+  } finally { brain.ctl = null; }
+  // con gli strumenti, il testo può contenere più "round": tieni l'ultimo blocco
+  reply = reply.split(/\n\s*\n/).filter((s) => s.trim()).pop() || reply;
+  d.turns.push({ role: 'assistant', content: reply });
+  if (d.turns.length > 120) compact();
+  save('chat');
+  return reply;
+}
+async function compact() {
+  const d = mem.data.chat; if (brain.compacting) return; brain.compacting = true;
+  try {
+    const old = d.turns.slice(0, d.turns.length-50);
+    const transcript = old.map((t) => `${t.role === 'user' ? 'Signore' : 'Jarvis'}: ${t.content}`).join('\n');
+    const { text } = await brain.sample(`Riassunto precedente: ${d.summary || '(nessuno)'}\n\nNuova parte di conversazione:\n${transcript}\n\nScrivi un riassunto unico e denso (massimo 250 parole) di tutta la conversazione: temi, idee, decisioni, domande aperte, tono. In italiano, in prosa, senza preamboli.`, { modelTier: 'quick', cache: false });
+    if (text) { d.summary = text.trim(); d.turns = d.turns.slice(-50); save('chat'); }
+  } catch {}
+  brain.compacting = false;
+}
+async function reflect() {
+  if (brain.turnsSinceReflect < 3 || !brain.sample) return;
+  brain.turnsSinceReflect = 0;
+  const recent = mem.data.chat.turns.slice(-50).map((t) => `${t.role === 'user' ? 'Signore' : 'Jarvis'}: ${t.content}`).join('\n');
+  try {
+    const data = await brain.sample.json(`Sei Jarvis. Rileggi questa conversazione con il Signore:\n${recent}\n\nCose che sapevi già di lui:\n${mem.data.memories.items.join('\n') || '(niente)'}\n\nRispondi SOLO con un oggetto JSON {"diario": string, "fatti": string[]}: "diario" è una o due frasi in prima persona su di cosa avete parlato e come è andata, come un diario personale; "fatti" sono fatti NUOVI e duraturi sul Signore (gusti, persone, progetti, abitudini), esclusi quelli già noti; array vuoto se non ce ne sono.`, { modelTier: 'quick', cache: false });
+    if (data && data.diario) { mem.data.diary.items.push({ date: new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long' }), text: String(data.diario) }); mem.data.diary.items = mem.data.diary.items.slice(-40); save('diary'); }
+    if (data && Array.isArray(data.fatti) && data.fatti.length) { mem.data.memories.items = [...mem.data.memories.items, ...data.fatti.filter((f) => typeof f === 'string')].slice(-150); save('memories'); }
+  } catch {}
+}
+function errorMessage(e) {
+  switch (e && e.code) {
+    case 'not_granted': sys('sys-brain', false, true); return 'Signore, non mi hai dato il permesso di usare Claude. Puoi concederlo dal menu Permessi di questa pagina.';
+    case 'rate_limited': return 'Ho esaurito per ora le richieste disponibili sul tuo account, Signore. Riproviamo tra qualche minuto.';
+    case 'refused': return 'Su questo preferisco non rispondere, Signore.';
+    case 'cancelled': return '';
+    case 'session_expired': return 'La tua sessione su Claude è scaduta, Signore: ricarica la pagina e accedi di nuovo.';
+    case 'sampling_disabled': return 'Claude non è disponibile su questo account, Signore.';
+    default: return 'Il mio cervello ha avuto un singhiozzo, Signore. Riprova.';
+  }
+}
+
+/* ======================= VOCE ======================= */
+const mouth = {
+  synth: window.speechSynthesis, voices: [], _token: 0, speaking: false,
+  init() { if (!this.synth) return; this.voices = this.synth.getVoices(); this.synth.onvoiceschanged = () => { this.voices = this.synth.getVoices(); }; },
+  pick() { const it = this.voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith('it')); return it.find((v) => /google/i.test(v.name)) || it[0] || null; },
+  chunks(text) { const clean = text.replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim(); const parts = clean.match(/[^.!?;:]+[.!?;:]*/g) || [clean]; const out = []; let buf = '';
+    for (const p of parts) { if ((buf+p).length > 180 && buf) { out.push(buf.trim()); buf = p; } else buf += p; } if (buf.trim()) out.push(buf.trim()); return out; },
+  speak(text) {
+    if (!this.synth || !text) return Promise.resolve();
+    this.cancel(); const token = ++this._token; const voice = this.pick(); const pieces = this.chunks(text); this.speaking = true; setMode('speaking');
+    return new Promise((resolve) => {
+      let i = 0;
+      const finish = () => { if (token !== this._token) return resolve(); this.speaking = false; resolve(); };
+      const next = () => {
+        if (token !== this._token) return resolve(); if (i >= pieces.length) return finish();
+        const piece = pieces[i++]; const u = new SpeechSynthesisUtterance(piece); u.lang = 'it-IT'; if (voice) u.voice = voice; u.rate = 1.05; u.pitch = 0.95;
+        const guard = setTimeout(() => { u.onend = null; next(); }, piece.length*110+4000);
+        u.onend = () => { clearTimeout(guard); next(); }; u.onerror = () => { clearTimeout(guard); next(); };
+        this.synth.speak(u);
+      };
+      next();
+    });
+  },
+  cancel() { this._token++; if (this.synth) this.synth.cancel(); this.speaking = false; },
+};
+
+/* ======================= UDITO (dettatura di Claude) ======================= */
+const ears = { d: null, native: null, listening: false, wanted: false, mutedUntil: 0 };
+const heard = { text: '', timer: null };
+function silenceMs() { if (!state.conversation) return 700; return mem.data.boards.topic ? 2600 : 1500; }
+function armSilence() { clearTimeout(heard.timer); heard.timer = setTimeout(() => { const t = heard.text.trim(); heard.text = ''; if (t) onHeard(t); }, silenceMs()); }
+function gotFinal(t) {
+  if (state.busy || mouth.speaking || Date.now() < ears.mutedUntil) return; // non ascoltare se stesso
+  heard.text += ` ${t}`; if (state.conversation) showUser(heard.text.trim()); armSilence();
+}
+function gotPartial(t) { if (state.busy || mouth.speaking) return; if (state.conversation && t) showUser(`${heard.text} ${t}`.trim()); if (heard.text) armSilence(); }
+async function setupEars() {
+  ears.d = await claude.use('dictation').catch(() => null);
+  if (ears.d) {
+    ears.d.onFinal(({ text }) => gotFinal(text));
+    ears.d.onPartial(({ text }) => gotPartial(text));
+    ears.d.onState(({ state: s, reason }) => {
+      ears.listening = s === 'listening'; sys('sys-ears', s !== 'idle');
+      if (s === 'idle' && ears.wanted) {
+        if (reason === 'not_granted' || reason === 'unavailable') { ears.wanted = false; showJarvis(reason === 'not_granted' ? 'Non ho il permesso di usare il microfono, Signore. Puoi concederlo dal menu Permessi di questa pagina.' : 'La dettatura non è disponibile in questa vista, Signore. Usa la tastiera.'); }
+        else $('btn-relisten').hidden = false; // serve un nuovo tocco (Stop, pagina nascosta, limite di 60 minuti)
+      }
+    });
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) {
+    const rec = new SR(); rec.lang = 'it-IT'; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = (ev) => { let interim = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) { const r = ev.results[i]; if (r.isFinal) gotFinal(r[0].transcript); else interim += r[0].transcript; } if (interim) gotPartial(interim); };
+    rec.onstart = () => { ears.listening = true; sys('sys-ears', true); };
+    rec.onend = () => { ears.listening = false; sys('sys-ears', false); if (ears.wanted) setTimeout(() => { try { rec.start(); } catch {} }, 300); };
+    rec.onerror = (ev) => { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { ears.wanted = false; showJarvis('Il microfono è bloccato in questa vista, Signore. Usa la tastiera.'); } };
+    ears.native = rec;
+  }
+}
+// Da chiamare SOLO dentro un click del Signore.
+function startEarsFromGesture() {
+  ears.wanted = true; $('btn-relisten').hidden = true;
+  if (ears.d) {
+    ears.d.start({ language: 'it' }).catch((e) => {
+      if (e.code === 'unavailable') ears.d.start().catch(() => {}); // riprova nella lingua del browser
+      else if (e.code === 'not_granted') { ears.wanted = false; showJarvis('Senza microfono posso solo leggere quello che scrivi, Signore. Usa la tastiera.'); }
+      else if (e.code === 'dismissed') { $('btn-relisten').hidden = false; }
+    });
+  } else if (ears.native) { try { ears.native.start(); } catch {} }
+  else { sys('sys-ears', false); }
+}
+
+/* ======================= STATO E INTERFACCIA ======================= */
+const core = new NeuralCore($('core'));
+const state = { mode: 'off', conversation: false, endAfterReply: false, busy: false, queue: [] };
+const STATUS = { off: 'SISTEMI OFFLINE', sleep: 'IN ATTESA · DI\' «JARVIS»', listening: 'TI ASCOLTO, SIGNORE', thinking: 'ELABORAZIONE', speaking: '' };
+const WAKE = /\b(jarvis|jarvi|jarviss|giarvis|jervis|gervis|charvis|jarbis|giarvi|jar vis)\b/i;
+const GOODBYE = /\b(ciao|arrivederci|a dopo|a più tardi|a presto|buonanotte|addio|alla prossima)\b/i;
+const ACKS = ['Dimmi, Signore.', 'Sono tutto orecchi, Signore.', 'Eccomi, Signore.', 'Agli ordini, Signore.', 'Dica pure, Signore.'];
+const BYES = ['A dopo, Signore.', 'Ciao Signore, io resto qui.', 'Quando vuoi, Signore.', 'Torno a sonnecchiare, Signore.'];
+const THINK_LINES = ['ci rifletto un attimo', 'collego i pezzi', 'cerco il punto debole', 'valuto le alternative', 'metto in fila le idee'];
+const pick = (arr) => arr[(Math.random()*arr.length)|0];
+
+function placeStatus() { const edge = core.bottomEdge(); $('status').style.top = `${edge+8}px`; $('thoughts').style.top = innerWidth < innerHeight ? `${edge+34}px` : ''; }
+placeStatus(); window.addEventListener('resize', placeStatus);
+function setMode(mode) { state.mode = mode; core.setState(mode); const el = $('status'); el.textContent = STATUS[mode]; el.classList.toggle('thinking', mode === 'thinking'); $('btn-stop').hidden = mode !== 'speaking' && mode !== 'thinking'; }
+function sys(id, on, warn = false) { const el = $(id); el.classList.toggle('on', !!on && !warn); el.classList.toggle('warn', !!warn); }
+let typeTimer;
+function showJarvis(text) { const el = $('sub-jarvis'); clearInterval(typeTimer); el.textContent = ''; let i = 0; typeTimer = setInterval(() => { i += 2; el.textContent = text.slice(0, i); el.scrollTop = el.scrollHeight; if (i >= text.length) clearInterval(typeTimer); }, 28); }
+function showUser(text) { $('sub-user').textContent = text ? `«${text}»` : ''; }
+function tickClock() { const d = new Date(); $('clock').textContent = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); $('date').textContent = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }); }
+function refreshReminders() { const n = mem.data.reminders.items.length; $('rem-count').textContent = n ? `${n} promemoria attiv${n === 1 ? 'o' : 'i'}` : ''; }
+function refreshBoard() {
+  const topic = mem.data.boards.topic; $('board').hidden = !topic; STATUS.listening = topic ? 'BRAINSTORMING · TI ASCOLTO' : 'TI ASCOLTO, SIGNORE'; if (state.mode === 'listening') setMode('listening'); if (!topic) return;
+  $('board-topic').textContent = topic; const ideas = (mem.data.boards.map[topic] || []).slice(-7); const ul = $('board-ideas'); ul.innerHTML = '';
+  ideas.forEach((i) => { const li = document.createElement('li'); li.textContent = i; ul.append(li); }); if (!ideas.length) ul.innerHTML = '<li class="empty">Ancora nessuna idea. Spara.</li>';
+}
+function addThought(t) { const box = $('thoughts'); const last = box.lastElementChild; if (last && last.textContent === t) return; const el = document.createElement('div'); el.className = 'thought'; el.textContent = t; box.append(el); while (box.children.length > 4) box.firstElementChild.remove(); }
+function clearThoughts() { $('thoughts').innerHTML = ''; $('thoughts').classList.remove('fade'); }
+function fadeThoughts() { $('thoughts').classList.add('fade'); }
+
+async function say(text) { showJarvis(text); await mouth.speak(text); ears.mutedUntil = Date.now()+700; }
+function listenAgain() { if (state.mode === 'off') return; setMode(state.conversation ? 'listening' : 'sleep'); }
+function startConversation() { state.conversation = true; }
+function endConversation() { state.conversation = false; state.endAfterReply = false; if (mem.data.boards.topic) { mem.data.boards.topic = ''; save('boards'); refreshBoard(); } reflect(); }
+
+function onHeard(raw) {
+  if (state.busy) return; const text = raw.trim(); if (!text) return;
+  if (!state.conversation) {
+    const m = text.match(WAKE); if (!m) return; startConversation();
+    const rest = text.slice(m.index+m[0].length).replace(/^[\s,.!?:;]+/, '').trim(); const before = text.slice(0, m.index).trim();
+    if (rest.length < 3) { showUser(text); run(async () => { await say(pick(ACKS)); }); return; }
+    handle(before && !GOODBYE.test(before) ? text : rest); return;
+  }
+  if (GOODBYE.test(text) && WAKE.test(text) && text.split(/\s+/).length <= 6) { showUser(text); run(async () => { await say(pick(BYES)); endConversation(); }); return; }
+  handle(text);
+}
+async function run(task) { state.busy = true; try { await task(); } finally { state.busy = false; await flushQueue(); listenAgain(); } }
+function handle(text) {
+  showUser(text);
+  run(async () => {
+    setMode('thinking'); core.burst(40); clearThoughts();
+    if (!brain.sample) { await say('Signore, in questa vista non riesco a raggiungere Claude. Apri la pagina da claude.ai con il tuo account.'); return; }
+    const ticker = setInterval(() => { addThought(pick(THINK_LINES)); core.burst(15); }, 2200);
+    addThought(pick(THINK_LINES));
+    let reply;
+    try { reply = await ask(text); sys('sys-brain', true); }
+    catch (e) { reply = errorMessage(e); if (!reply) { clearInterval(ticker); fadeThoughts(); return; } }
+    finally { clearInterval(ticker); }
+    fadeThoughts();
+    await say(reply || 'Uhm. Ho perso il filo, Signore.');
+    if (state.endAfterReply) endConversation();
+  });
+}
+
+/* promemoria */
+function beep() { try { const ac = new (window.AudioContext || window.webkitAudioContext)(); [0, 0.25, 0.5].forEach((t) => { const o = ac.createOscillator(); const g = ac.createGain(); o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ac.currentTime+t); g.gain.exponentialRampToValueAtTime(0.3, ac.currentTime+t+0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+t+0.2); o.connect(g).connect(ac.destination); o.start(ac.currentTime+t); o.stop(ac.currentTime+t+0.22); }); setTimeout(() => ac.close(), 1200); } catch {} }
+function checkReminders() {
+  if (!mem.ready) return; const now = Date.now(); const due = mem.data.reminders.items.filter((r) => r.due <= now); if (!due.length) return;
+  mem.data.reminders.items = mem.data.reminders.items.filter((r) => r.due > now); save('reminders'); refreshReminders();
+  due.forEach((r) => state.queue.push(now - r.due > 5*60000 ? `Signore, mentre ero spento è scaduto un promemoria: ${r.text}` : `Signore, ti ricordo: ${r.text}`));
+  if (!state.busy && state.mode !== 'off') run(async () => {});
+}
+async function flushQueue() { while (state.queue.length && state.mode !== 'off') { const msg = state.queue.shift(); beep(); await new Promise((r) => setTimeout(r, 800)); await say(msg); } }
+
+/* tocchi */
+$('core').addEventListener('click', (ev) => {
+  if (state.mode === 'off') return; const c = core.center; if (!c || Math.hypot(ev.clientX-c.x, ev.clientY-c.y) > c.r) return;
+  if (state.mode === 'speaking') { mouth.cancel(); return; }
+  if (!state.conversation && !state.busy) { startConversation(); run(async () => { await say(pick(ACKS)); }); }
+});
+$('btn-stop').addEventListener('click', () => { mouth.cancel(); if (brain.ctl) brain.ctl.abort(); });
+$('btn-keyboard').addEventListener('click', () => { const f = $('typer'); f.hidden = !f.hidden; if (!f.hidden) $('typer-input').focus(); });
+$('typer').addEventListener('submit', (ev) => { ev.preventDefault(); const v = $('typer-input').value.trim(); if (!v || state.busy) return; $('typer-input').value = ''; $('typer').hidden = true; if (!state.conversation) startConversation(); handle(v); });
+$('btn-relisten').addEventListener('click', () => startEarsFromGesture());
+
+let wakeLock = null;
+async function keepAwake() { try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.mode !== 'off') { keepAwake(); if (!state.busy) listenAgain(); } });
+function greeting() { const h = new Date().getHours(); if (h < 5) return 'Sistemi online. Ancora sveglio, Signore? Non ti giudico. Quasi.'; if (h < 13) return 'Sistemi online. Buongiorno, Signore.'; if (h < 18) return 'Sistemi online. Buon pomeriggio, Signore.'; return 'Sistemi online. Buonasera, Signore.'; }
+
+async function boot() {
+  startEarsFromGesture(); // deve partire dentro il tocco
+  $('boot').classList.add('gone');
+  try { await document.documentElement.requestFullscreen?.(); } catch {}
+  keepAwake(); setMode('thinking'); core.burst(120);
+  sys('sys-voice', !!window.speechSynthesis);
+  mouth.init();
+  await new Promise((r) => setTimeout(r, 1200));
+  state.busy = true;
+  await say(brain.sample ? greeting() : 'Sistemi online, Signore, ma non riesco a raggiungere Claude: apri questa pagina da claude.ai con il tuo account.');
+  state.busy = false;
+  await flushQueue(); listenAgain();
+}
+$('btn-boot').addEventListener('click', boot);
+
+(async function init() {
+  tickClock(); setInterval(tickClock, 1000); setInterval(checkReminders, 1000);
+  mouth.init();
+  await loadMemory(); refreshReminders(); refreshBoard();
+  setupEars();
+  brain.sample = await claude.use('sample').catch(() => null);
+  if (brain.sample) { sys('sys-brain', true); try { brain.limits = await brain.sample.limits(); } catch { brain.limits = {}; } }
+  else { sys('sys-brain', false, true); $('boot-hint').textContent = 'Claude non è raggiungibile da questa vista: apri la pagina da claude.ai, con il tuo account, in Chrome.'; }
+})();
+})();
+</script>

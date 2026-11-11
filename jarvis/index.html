@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#01060b">
+<meta name="mobile-web-app-capable" content="yes">
+<title>J.A.R.V.I.S.</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="core"></canvas>
+
+  <div class="hud">
+    <section class="panel tl">
+      <div id="clock" class="clock">--:--</div>
+      <div id="date" class="date"></div>
+    </section>
+
+    <section class="panel tr">
+      <div class="label">METEO</div>
+      <div class="weather"><span id="w-temp">--°</span><span id="w-desc">in attesa</span></div>
+      <div id="w-place" class="sub"></div>
+    </section>
+
+    <section class="panel bl systems">
+      <div class="label">SISTEMI</div>
+      <ul>
+        <li id="sys-brain"><i></i>Cervello</li>
+        <li id="sys-ears"><i></i>Udito</li>
+        <li id="sys-voice"><i></i>Voce</li>
+        <li id="sys-spotify"><i></i>Spotify</li>
+        <li id="sys-home" class="off"><i></i>Domotica</li>
+      </ul>
+      <div id="rem-count" class="sub"></div>
+    </section>
+
+    <section class="panel br" id="music" hidden>
+      <div class="label">IN RIPRODUZIONE</div>
+      <div id="music-title" class="music-title"></div>
+      <div id="music-artist" class="sub"></div>
+    </section>
+
+    <section class="panel ml" id="board" hidden>
+      <div class="label">BRAINSTORMING</div>
+      <div id="board-topic" class="board-topic"></div>
+      <ul id="board-ideas" class="board-ideas"></ul>
+    </section>
+
+    <div id="thoughts" class="thoughts"></div>
+
+    <div class="title">J.A.R.V.I.S.</div>
+    <div id="status" class="status">SISTEMI OFFLINE</div>
+
+    <div class="subs">
+      <div id="sub-user" class="sub-user"></div>
+      <div id="sub-jarvis" class="sub-jarvis"></div>
+    </div>
+
+    <div class="buttons">
+      <button id="btn-keyboard" class="icon-btn" aria-label="Scrivi">⌨</button>
+      <button id="btn-settings" class="icon-btn" aria-label="Impostazioni">⚙</button>
+    </div>
+
+    <form id="typer" class="typer" hidden>
+      <input id="typer-input" autocomplete="off" placeholder="Scrivi a Jarvis…">
+      <button type="submit">INVIA</button>
+    </form>
+  </div>
+
+  <div id="boot" class="boot">
+    <div class="boot-inner">
+      <div class="boot-title">J.A.R.V.I.S.</div>
+      <div class="boot-sub">Just A Rather Very Intelligent System</div>
+      <button id="btn-boot" class="boot-btn">ATTIVA</button>
+      <div class="boot-hint">Tocca per accendere. Poi basta dire «Jarvis».</div>
+    </div>
+  </div>
+
+  <dialog id="settings">
+    <form method="dialog" class="settings">
+      <h2>IMPOSTAZIONI</h2>
+
+      <fieldset>
+        <legend>Cervello (Google Gemini, gratis)</legend>
+        <label>Chiave API Gemini
+          <input id="s-key" type="password" autocomplete="off" placeholder="AIza…">
+        </label>
+        <p class="help">Creala gratis su <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> e incollala qui.</p>
+        <label>Modello (lascia vuoto per la scelta automatica)
+          <input id="s-model" placeholder="automatico">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Voce</legend>
+        <label>Voce italiana
+          <select id="s-voice"></select>
+        </label>
+        <label>Velocità <span id="s-rate-v"></span>
+          <input id="s-rate" type="range" min="0.7" max="1.5" step="0.05">
+        </label>
+        <label>Tono <span id="s-pitch-v"></span>
+          <input id="s-pitch" type="range" min="0.5" max="1.5" step="0.05">
+        </label>
+        <button type="button" id="s-test" class="small">Prova la voce</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Posizione</legend>
+        <label>Città predefinita (meteo)
+          <input id="s-city">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Spotify (serve Premium)</legend>
+        <label>Client ID
+          <input id="s-spotify" autocomplete="off" placeholder="dalla tua app su developer.spotify.com">
+        </label>
+        <p class="help">Redirect URI da registrare nell'app Spotify:<br><code id="s-redirect"></code></p>
+        <div class="row">
+          <button type="button" id="s-spotify-connect" class="small">Collega Spotify</button>
+          <span id="s-spotify-status" class="help"></span>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Memoria</legend>
+        <ul id="s-memories" class="memories"></ul>
+        <div class="row">
+          <button type="button" id="s-reset-chat" class="small">Dimentica la conversazione</button>
+        </div>
+      </fieldset>
+
+      <div class="row end">
+        <button value="cancel" class="small ghost">Chiudi</button>
+        <button id="s-save" value="save" class="small">Salva</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

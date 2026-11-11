@@ -3,6 +3,10 @@ import { getSettings } from './store.js';
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
+// Su Android il riconoscimento "continuo" di Chrome ripete e accumula le frasi:
+// lì si usano sessioni brevi (una frase per volta) che ripartono da sole.
+const ANDROID = /Android/i.test(navigator.userAgent);
+
 export class Ears {
   constructor({ onFinal, onInterim, onError, onActive }) {
     this.onFinal = onFinal;
@@ -13,16 +17,35 @@ export class Ears {
     this.running = false;
     this.supported = !!SR;
     this.fatal = false;
+    this.sessionText = '';
+    this.failures = 0;
+  }
+
+  _flush() {
+    const t = this.sessionText.trim();
+    this.sessionText = '';
+    if (t) this.onFinal(t);
   }
 
   _create() {
     const rec = new SR();
     rec.lang = 'it-IT';
-    rec.continuous = true;
+    rec.continuous = !ANDROID;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
     rec.onstart = () => { this.running = true; this.onActive(true); };
     rec.onresult = (ev) => {
+      this.failures = 0;
+      if (ANDROID) {
+        // una sessione = una frase: si tiene sempre la trascrizione più recente e completa
+        let text = '';
+        for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
+        this.sessionText = text;
+        const last = ev.results[ev.results.length - 1];
+        if (last && last.isFinal) this._flush();
+        else if (text.trim()) this.onInterim(text.trim());
+        return;
+      }
       let interim = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const r = ev.results[i];
@@ -40,17 +63,25 @@ export class Ears {
         this.fatal = true;
         this.wanted = false;
         this.onError('microfono-negato');
+      } else if (ev.error === 'audio-capture') {
+        this.failures++;
+        this.onError('microfono-occupato');
       } else if (ev.error === 'network') {
+        this.failures++;
         this.onError('rete');
       }
       // 'no-speech' e 'aborted' sono normali: si riparte da soli
     };
     rec.onend = () => {
       this.running = false;
+      if (this.wanted) this._flush(); // frase rimasta in sospeso a fine sessione
+      else this.sessionText = '';
       this.onActive(false);
       if (this.wanted && !this.fatal) {
         clearTimeout(this._restart);
-        this._restart = setTimeout(() => this._start(), 250);
+        // se continua a fallire (rete assente, microfono occupato) rallenta invece di martellare
+        const wait = Math.min(250 + this.failures * 1500, 8000);
+        this._restart = setTimeout(() => this._start(), wait);
       }
     };
     return rec;
@@ -77,6 +108,7 @@ export class Ears {
 
   stop() {
     this.wanted = false;
+    this.sessionText = '';
     clearTimeout(this._restart);
     try { this.rec && this.rec.abort(); } catch { /* ignore */ }
   }
@@ -138,7 +170,9 @@ export class Mouth {
 
   speak(text) {
     if (!this.synth || !text) return Promise.resolve();
+    const wasBusy = this.synth.speaking || this.synth.pending;
     this.cancel();
+    try { this.synth.resume(); } catch { /* ignore */ } // Android a volte resta "in pausa"
     const token = ++this._token;
     const { rate, pitch } = getSettings();
     const voice = this.pickVoice();
@@ -158,18 +192,27 @@ export class Mouth {
         if (token !== this._token) return resolve();
         if (i >= pieces.length) return finish();
         const piece = pieces[i++];
-        const u = new SpeechSynthesisUtterance(piece);
-        u.lang = 'it-IT';
-        if (voice) u.voice = voice;
-        u.rate = Number(rate) || 1;
-        u.pitch = Number(pitch) || 1;
-        // rete di sicurezza: a volte Android non chiama onend
-        const guard = setTimeout(() => { u.onend = null; next(); }, piece.length * 110 + 4000);
-        u.onend = () => { clearTimeout(guard); next(); };
-        u.onerror = () => { clearTimeout(guard); next(); };
-        this.synth.speak(u);
+        let guard;
+        try {
+          const u = new SpeechSynthesisUtterance(piece);
+          u.lang = 'it-IT';
+          try { if (voice) u.voice = voice; } catch { /* voce non valida: usa quella di sistema */ }
+          u.rate = Number(rate) || 1;
+          u.pitch = Number(pitch) || 1;
+          // rete di sicurezza: a volte Android non chiama onend
+          guard = setTimeout(() => { u.onend = null; u.onerror = null; next(); }, piece.length * 110 + 4000);
+          u.onend = () => { clearTimeout(guard); next(); };
+          u.onerror = () => { clearTimeout(guard); next(); };
+          this._current = u; // tiene vivo l'oggetto: altrimenti Chrome può non chiamare onend
+          this.synth.speak(u);
+        } catch {
+          // la voce non deve mai bloccare Jarvis: se qualcosa va storto si prosegue in silenzio
+          clearTimeout(guard);
+          finish();
+        }
       };
-      next();
+      // dopo un cancel() Android ha bisogno di un attimo, o si mangia la prima frase
+      if (wasBusy) setTimeout(next, 150); else next();
     });
   }
 

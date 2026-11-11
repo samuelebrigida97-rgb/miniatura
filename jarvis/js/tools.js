@@ -1,5 +1,5 @@
 // Gli "strumenti" che il cervello può usare: meteo, ricerca web, promemoria, liste, memoria, Spotify.
-import { store, getSettings } from './store.js';
+import { store, getSettings, saveSettings } from './store.js';
 import { spotify } from './spotify.js';
 
 const WMO = {
@@ -17,36 +17,107 @@ export function weatherText(code) {
 }
 
 // ---------- posizione e meteo ----------
+// Ordine: città scritta a mano nelle impostazioni > GPS del tablet > posizione approssimata dalla rete.
+
+const GEO_TTL = 30 * 60 * 1000;
+
+async function getJSON(url, ms = 8000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function geocode(name) {
   const q = new URLSearchParams({ name, count: '1', language: 'it', format: 'json' });
-  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${q}`);
-  const d = await r.json();
+  const d = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?${q}`);
   const g = d.results?.[0];
   if (!g) throw new Error(`Non trovo il luogo "${name}".`);
-  return { lat: g.latitude, lon: g.longitude, name: g.name };
+  return { lat: g.latitude, lon: g.longitude, name: g.name, region: g.admin1 || '', country: g.country || '' };
+}
+
+// Dalle coordinate al nome del posto.
+async function reverseName(lat, lon) {
+  try {
+    const q = new URLSearchParams({ format: 'jsonv2', lat, lon, zoom: '10', 'accept-language': 'it' });
+    const d = await getJSON(`https://nominatim.openstreetmap.org/reverse?${q}`);
+    const a = d.address || {};
+    const name = a.city || a.town || a.village || a.municipality || d.name;
+    if (name) return { name, region: a.state || '', country: a.country || '' };
+  } catch { /* prova il servizio di riserva */ }
+  try {
+    const q = new URLSearchParams({ latitude: lat, longitude: lon, localityLanguage: 'it' });
+    const d = await getJSON(`https://api.bigdatacloud.net/data/reverse-geocode-client?${q}`);
+    const name = d.city || d.locality;
+    if (name) return { name, region: d.principalSubdivision || '', country: d.countryName || '' };
+  } catch { /* niente nome */ }
+  return null;
 }
 
 function gps() {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+      (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy }),
       () => resolve(null),
-      { timeout: 8000, maximumAge: 30 * 60 * 1000 },
+      { timeout: 10000, maximumAge: 10 * 60 * 1000, enableHighAccuracy: false },
     );
   });
 }
 
-export async function locate(place) {
+// Senza permesso GPS: posizione stimata dall'indirizzo di rete (può sbagliare città).
+async function ipLocation() {
+  try {
+    const d = await getJSON('https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=it');
+    if (typeof d.latitude === 'number') {
+      return { lat: d.latitude, lon: d.longitude, name: d.city || d.locality || 'posizione sconosciuta', region: d.principalSubdivision || '', country: d.countryName || '' };
+    }
+  } catch { /* niente */ }
+  return null;
+}
+
+export function knownLocation() {
+  return store.get('geo', null);
+}
+
+export async function locate(place, { force = false } = {}) {
   if (place) return geocode(place);
+
+  const manual = (getSettings().place || '').trim();
   const cached = store.get('geo', null);
-  if (cached && Date.now() - cached.ts < 6 * 3600 * 1000) return cached;
-  const city = getSettings().city || 'Roma';
+  if (manual) {
+    if (cached && cached.source === 'manuale' && cached.query === manual.toLowerCase()) return cached;
+    const g = await geocode(manual);
+    const loc = { ...g, source: 'manuale', query: manual.toLowerCase(), ts: Date.now() };
+    store.set('geo', loc);
+    return loc;
+  }
+
+  if (!force && cached && cached.source !== 'manuale' && Date.now() - cached.ts < GEO_TTL) return cached;
+
   const pos = await gps();
-  const loc = pos ? { ...pos, name: city } : await geocode(city);
-  store.set('geo', { ...loc, ts: Date.now() });
-  return loc;
+  if (pos) {
+    // se non ci si è spostati, il nome già noto resta valido
+    const same = cached && cached.source === 'gps' && Math.abs(cached.lat - pos.lat) < 0.02 && Math.abs(cached.lon - pos.lon) < 0.02;
+    const named = same ? { name: cached.name, region: cached.region, country: cached.country } : await reverseName(pos.lat, pos.lon);
+    const loc = { lat: pos.lat, lon: pos.lon, ...(named || { name: 'posizione attuale', region: '', country: '' }), source: 'gps', ts: Date.now() };
+    store.set('geo', loc);
+    return loc;
+  }
+
+  const ip = await ipLocation();
+  if (ip) {
+    const loc = { ...ip, source: 'rete', ts: Date.now() };
+    store.set('geo', loc);
+    return loc;
+  }
+  if (cached && cached.source !== 'manuale') return cached; // meglio un dato vecchio che niente
+  throw new Error('Non riesco a capire dove si trova il tablet: serve il permesso di posizione, oppure la città scritta nelle impostazioni.');
 }
 
 export async function getWeather(place) {
@@ -56,11 +127,28 @@ export async function getWeather(place) {
     current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m',
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
   });
-  const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`);
-  const d = await r.json();
+  // memoria breve: l'HUD e le domande a voce non interrogano il servizio due volte in pochi minuti
+  const key = `${Number(loc.lat).toFixed(2)},${Number(loc.lon).toFixed(2)}`;
+  const cache = store.get('weatherCache', null);
+  let d;
+  if (cache && cache.key === key && Date.now() - cache.ts < 10 * 60 * 1000) {
+    d = cache.data;
+  } else {
+    try {
+      d = await getJSON(`https://api.open-meteo.com/v1/forecast?${q}`, 10000);
+      if (!d || !d.current) throw new Error('risposta meteo incompleta');
+      store.set('weatherCache', { key, ts: Date.now(), data: d });
+    } catch (e) {
+      // servizio momentaneamente irraggiungibile: meglio il dato di poco fa che niente
+      if (cache && cache.key === key && Date.now() - cache.ts < 3 * 3600 * 1000) d = cache.data;
+      else throw new Error('Il servizio meteo non risponde in questo momento.');
+    }
+  }
   const days = ['oggi', 'domani', 'dopodomani'];
   return {
     luogo: loc.name,
+    regione: loc.region || undefined,
+    posizione_approssimata: loc.source === 'rete' ? true : undefined,
     adesso: {
       temperatura: Math.round(d.current.temperature_2m),
       percepita: Math.round(d.current.apparent_temperature),
@@ -76,6 +164,7 @@ export async function getWeather(place) {
       probabilita_pioggia: d.daily.precipitation_probability_max[i],
     })),
     _code: d.current.weather_code,
+    _source: loc.source,
   };
 }
 
@@ -116,13 +205,26 @@ const S = (type, description, extra = {}) => ({ type, description, ...extra });
 export const declarations = [
   {
     name: 'meteo',
-    description: 'Meteo attuale e previsioni per 3 giorni. Senza luogo usa la posizione del tablet.',
+    description: 'Meteo attuale e previsioni per 3 giorni. Senza luogo usa la posizione reale del tablet (GPS).',
     parameters: { type: 'OBJECT', properties: { luogo: S('STRING', 'Città, opzionale') } },
   },
   {
     name: 'cerca_sul_web',
     description: 'Cerca su Google informazioni aggiornate: notizie, risultati sportivi, fatti recenti, orari, prezzi. Usalo per tutto ciò che può essere cambiato dopo il tuo addestramento.',
     parameters: { type: 'OBJECT', properties: { domanda: S('STRING', 'Cosa cercare, in italiano') }, required: ['domanda'] },
+  },
+  {
+    name: 'dove_sono',
+    description: 'Rileva di nuovo dove si trova il tablet in questo momento (GPS) e restituisce città e regione.',
+  },
+  {
+    name: 'imposta_citta',
+    description: 'Fissa a mano la città del Signore, quando dice dove si trova o dove abita e la posizione rilevata è sbagliata. Con citta vuota torna alla posizione automatica (GPS).',
+    parameters: { type: 'OBJECT', properties: { citta: S('STRING', 'Nome della città, oppure vuoto per tornare al GPS') }, required: ['citta'] },
+  },
+  {
+    name: 'vai_a_riposo',
+    description: 'Modalità notte: spegne l\'ascolto e oscura lo schermo finché il Signore non lo tocca. Usalo quando dice buonanotte, vai a dormire, o chiede silenzio per la notte. Saluta in una frase.',
   },
   {
     name: 'data_ora',
@@ -240,7 +342,27 @@ export function createHandlers(ctx) {
     async meteo({ luogo }) {
       const w = await getWeather(luogo);
       delete w._code;
+      delete w._source;
       return w;
+    },
+
+    async dove_sono() {
+      const loc = await locate(null, { force: true });
+      ctx.onLocationChanged();
+      return { citta: loc.name, regione: loc.region, paese: loc.country, fonte: loc.source, approssimata: loc.source === 'rete' };
+    },
+
+    async imposta_citta({ citta }) {
+      saveSettings({ place: (citta || '').trim() });
+      store.remove('geo');
+      const loc = await locate(null, { force: true });
+      ctx.onLocationChanged();
+      return { ok: true, citta: loc.name, regione: loc.region, fonte: loc.source };
+    },
+
+    async vai_a_riposo() {
+      ctx.rest();
+      return { ok: true };
     },
 
     async cerca_sul_web({ domanda }) {

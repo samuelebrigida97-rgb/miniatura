@@ -37,6 +37,7 @@
         <li id="sys-home" class="off"><i></i>Domotica</li>
       </ul>
       <div id="rem-count" class="sub"></div>
+      <div id="body-info" class="sub"></div>
     </section>
 
     <section class="panel br" id="music" hidden>
@@ -63,6 +64,7 @@
 
     <div class="buttons">
       <button id="btn-keyboard" class="icon-btn" aria-label="Scrivi">⌨</button>
+      <button id="btn-rest" class="icon-btn" aria-label="Modalità notte">☾</button>
       <button id="btn-settings" class="icon-btn" aria-label="Impostazioni">⚙</button>
     </div>
 
@@ -70,6 +72,13 @@
       <input id="typer-input" autocomplete="off" placeholder="Scrivi a Jarvis…">
       <button type="submit">INVIA</button>
     </form>
+  </div>
+
+  <div id="rest" class="rest" hidden>
+    <div class="rest-inner">
+      <div id="rest-clock" class="rest-clock">--:--</div>
+      <div class="rest-hint">Jarvis riposa · tocca per svegliarlo</div>
+    </div>
   </div>
 
   <div id="boot" class="boot">
@@ -112,9 +121,22 @@
 
       <fieldset>
         <legend>Posizione</legend>
-        <label>Città predefinita (meteo)
-          <input id="s-city">
+        <p id="s-geo" class="help"></p>
+        <label>Città (lascia vuoto per usare la posizione vera del tablet)
+          <input id="s-city" placeholder="automatica, dal GPS">
         </label>
+        <div class="row">
+          <button type="button" id="s-locate" class="small">Rileva adesso</button>
+        </div>
+        <p class="help">Se Chrome chiede il permesso per la posizione, scegli Consenti.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Ascolto</legend>
+        <label>Parole di attivazione in più, separate da virgola
+          <input id="s-wake" autocomplete="off" placeholder="es. giarvi, ehi amico">
+        </label>
+        <p class="help">Quando Jarvis è in attesa, in basso compare «ho sentito: …». Se il tablet scrive «Jarvis» in un altro modo, aggiungi qui quella parola.</p>
       </fieldset>
 
       <fieldset>

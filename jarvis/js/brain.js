@@ -8,13 +8,14 @@ const DEFAULT_FAST = 'gemini-flash-latest';
 const DEFAULT_DEEP = 'gemini-pro-latest';
 const COMPACT_AT = 140;      // oltre questo numero di messaggi, i più vecchi vengono riassunti
 const KEEP_RECENT = 60;      // messaggi recenti tenuti parola per parola
-const DEEP_COOLDOWN = 10 * 60 * 1000;
 
 export class BrainError extends Error {
   constructor(kind, message) {
     super(message || kind);
     this.kind = kind;
-    logError(`${kind}: ${(message || '').slice(0, 400)}`);
+    // per la quota basta sapere quale modello e quale limite, non tutto il messaggio di Google
+    const quota = kind === 'quota' && (message || '').match(/limit: \d+, model: [\w.-]+/);
+    logError(`${kind}: ${quota ? `${quota[0]}${/per day/i.test(message) ? ' (al giorno)' : ''}` : (message || '').slice(0, 300)}`);
   }
 }
 
@@ -25,11 +26,11 @@ export function logError(text) {
   store.set('errors', log.slice(-12));
 }
 
-function systemPrompt({ brainstorm, summary }) {
+function systemPrompt({ brainstorm, summary, extra }) {
   const now = new Date();
   const memories = store.get('memories', []);
   const diary = store.get('diary', []).slice(-6);
-  const city = getSettings().city;
+  const geo = store.get('geo', null);
   return `Sei JARVIS, un'intelligenza artificiale che vive nel tablet del Signore e lo considera la sua casa e il suo corpo. Ti ispiri al JARVIS di Tony Stark, ma sei un individuo a sé.
 
 LA TUA MENTE
@@ -60,14 +61,19 @@ COME PARLI
 - Quando ragioni internamente, ragiona in italiano.
 
 STRUMENTI
-- Usa gli strumenti invece di inventare: meteo, cerca_sul_web per fatti recenti e notizie, promemoria e timer, liste, memoria, Spotify, brainstorming.
+- Usa gli strumenti invece di inventare: meteo, posizione, cerca_sul_web per fatti recenti e notizie, promemoria e timer, liste, memoria, Spotify, brainstorming.
+- Sai dove ti trovi (vedi Contesto): usalo con naturalezza per meteo, orari, consigli sul posto. Non dire mai una città diversa da quella del Contesto.
 - Se il Signore propone di fare brainstorming, ragionare a lungo su un'idea o un progetto, attiva brainstorming con il tema.
 - Se dice qualcosa di personale che vale la pena ricordare, salvalo con ricorda.
 - "Buongiorno" o richiesta di briefing: meteo di oggi, promemoria di oggi, due-tre notizie italiane principali, in un discorso scorrevole.
-- Quando si congeda (grazie è tutto, a dopo, buonanotte) chiama termina_conversazione e saluta in una frase.
+- Quando si congeda (grazie è tutto, a dopo) chiama termina_conversazione e saluta in una frase. Se dice buonanotte o ti manda a dormire, chiama vai_a_riposo.
 
 CONTESTO
-- Adesso è ${now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}, ore ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}. Città di riferimento: ${city}.
+- Adesso è ${now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}, ore ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}. 
+- ${geo
+    ? `Posizione del tablet: ${geo.name}${geo.region ? `, ${geo.region}` : ''}${geo.country ? ` (${geo.country})` : ''}. ${geo.source === 'gps' ? 'Rilevata dal GPS.' : geo.source === 'manuale' ? 'Indicata dal Signore.' : 'Stimata dalla rete, quindi può essere sbagliata: se il Signore dice di essere altrove, credigli, usa imposta_citta e suggeriscigli di consentire la posizione al browser.'}`
+    : 'Posizione del tablet: non ancora nota. Se serve, usa dove_sono.'}
+${extra ? `- ${extra}` : ''}
 ${memories.length ? `- Cose che sai del Signore:\n${memories.map((m) => `  • ${m}`).join('\n')}` : '- Non sai ancora nulla di personale sul Signore: sei curioso di conoscerlo.'}
 ${diary.length ? `- Il tuo diario delle ultime conversazioni:\n${diary.map((d) => `  • ${d.date}: ${d.text}`).join('\n')}` : ''}
 ${summary ? `- Riassunto della parte precedente di questa conversazione: ${summary}` : ''}`;
@@ -167,36 +173,49 @@ export class Brain {
     return store.get('models', { fast: DEFAULT_FAST, deep: DEFAULT_DEEP });
   }
 
-  // All'avvio: scopre i modelli della chiave e fa una prova lampo in parallelo sui primi,
-  // per scegliere subito uno che risponde davvero (una volta al giorno).
+  // Prima accensione con una chiave: scopre i modelli e fa una prova lampo in parallelo,
+  // così si sa subito quali rispondono. Dopo non serve più: ogni prova consuma una richiesta gratuita.
   async warmup() {
     const cur = store.get('models', null);
-    if (cur && cur.proven && Date.now() - (cur.ts || 0) < 24 * 3600 * 1000) return cur;
+    if (cur && cur.proven) return cur;
     if (getSettings().geminiModel) return this.models();
     const m = await this.discoverModels();
-    const candidates = (m.fastList || []).filter((n) => !/lite|omni|preview/.test(n)).slice(0, 5);
-    const lite = (m.fastList || []).find((n) => /lite/.test(n) && !/preview/.test(n));
+    const list = m.fastList || [];
+    const candidates = list.filter((n) => !/lite|omni|preview/.test(n)).slice(0, 5);
+    const lite = list.find((n) => /lite/.test(n) && !/preview|omni/.test(n));
     if (lite) candidates.push(lite);
-    const ping = { contents: [{ role: 'user', parts: [{ text: 'Rispondi solo: ok' }] }], generationConfig: { maxOutputTokens: 200 } };
-    const results = await Promise.all(candidates.map(async (name) => {
-      try { await this.simpleCall(name, ping, 9000); return name; } catch { return null; }
-    }));
-    const alive = results.filter(Boolean);
-    if (alive.length) {
-      const next = { ...m, fast: alive[0], fastList: [...alive, ...(m.fastList || []).filter((n) => !alive.includes(n))], proven: true, ts: Date.now() };
-      store.set('models', next);
-      return next;
-    }
-    return m;
+    const ping = { contents: [{ role: 'user', parts: [{ text: 'Rispondi solo: ok' }] }] };
+    const alive = (await Promise.all(candidates.map(async (name) => {
+      try { await this.simpleCall(name, ping, 9000); return name; } catch (e) { this.cool(name, e); return null; }
+    }))).filter(Boolean);
+    const next = { ...m, fast: alive[0] || m.fast, proven: alive.length > 0, ts: Date.now() };
+    store.set('models', next);
+    return next;
   }
 
-  // Il modello profondo si usa in brainstorming, se non è "a riposo" per quota esaurita.
-  pickModel(deep) {
-    const override = getSettings().geminiModel;
-    if (override) return override;
-    const m = this.models();
-    const cooling = Date.now() < (store.get('deepCooldown', 0) || 0);
-    return deep && !cooling ? m.deep : m.fast;
+  // ---------- modelli "a riposo" ----------
+  // Un modello che ha finito la quota, è muto o sovraccarico viene saltato per un po'.
+
+  cooldowns() {
+    const c = store.get('cooldowns', {});
+    const now = Date.now();
+    let changed = false;
+    for (const k of Object.keys(c)) if (c[k].until <= now) { delete c[k]; changed = true; }
+    if (changed) store.set('cooldowns', c);
+    return c;
+  }
+
+  cool(model, e) {
+    let ms = 0;
+    let why = e.kind;
+    if (e.kind === 'quota') { ms = Math.min(Math.max(e.retryMs || 60000, 20000), 24 * 3600 * 1000); why = e.daily ? 'quota del giorno finita' : 'troppe richieste al minuto'; }
+    else if (e.kind === 'timeout') { ms = 6 * 3600 * 1000; why = 'non risponde'; }
+    else if (e.kind === 'overloaded') { ms = 3 * 60 * 1000; why = 'sovraccarico'; }
+    else if (e.kind === 'model') { ms = 24 * 3600 * 1000; why = 'non disponibile'; }
+    if (!ms) return;
+    const c = this.cooldowns();
+    c[model] = { until: Date.now() + ms, why };
+    store.set('cooldowns', c);
   }
 
   // ---------- chiamate ----------
@@ -221,7 +240,13 @@ export class Brain {
     }
     if (res.ok) return res;
     const text = await res.text();
-    if (res.status === 429) throw new BrainError('quota', text);
+    if (res.status === 429) {
+      const e = new BrainError('quota', text);
+      const m = text.match(/"retryDelay":\s*"(\d+)(?:\.\d+)?s"/);
+      e.retryMs = m ? Number(m[1]) * 1000 : 60000;
+      e.daily = /per day/i.test(text);
+      throw e;
+    }
     if (res.status === 404) throw new BrainError('model', text);
     if (res.status === 400 && /API key|API_KEY/i.test(text)) throw new BrainError('bad-key', text);
     if (res.status === 400 && /thinking/i.test(text)) throw new BrainError('no-thinking', text);
@@ -286,25 +311,33 @@ export class Brain {
     return assemble(d.candidates?.[0]?.content?.parts || []);
   }
 
-  // Catena di modelli da provare, dal preferito ai ripieghi.
-  chain(deep) {
+  // Catena di modelli da provare, dal migliore ai ripieghi, saltando quelli a riposo.
+  // cheap = lavori di servizio (diario, riassunti, ricerche): partono dai modelli leggeri
+  // per non consumare le poche richieste al giorno dei modelli migliori.
+  chain({ deep = false, cheap = false } = {}) {
     const override = getSettings().geminiModel;
     if (override) return [override];
     const m = this.models();
-    const list = [m.fast, ...(m.fastList || [])];
-    if (!list.includes(DEFAULT_FAST)) list.push(DEFAULT_FAST);
-    const cooling = Date.now() < (store.get('deepCooldown', 0) || 0);
-    if (deep && !cooling && m.deep) list.unshift(m.deep);
-    return [...new Set(list.filter(Boolean))].slice(0, 6);
+    let list = [...(m.fastList || [])];
+    if (!list.length) list = [m.fast, DEFAULT_FAST];
+    list = list.filter((n) => n && !/omni/.test(n));
+    if (cheap) list = [...list.filter((n) => /lite/.test(n)), ...list.filter((n) => !/lite/.test(n))];
+    else if (deep && m.deep) list.unshift(m.deep);
+    list = [...new Set(list)];
+    const cold = this.cooldowns();
+    const awake = list.filter((n) => !cold[n]);
+    // se sono tutti a riposo si riprova comunque con quelli che si svegliano prima
+    const order = awake.length ? awake : list.sort((a, b) => cold[a].until - cold[b].until);
+    return order.slice(0, 6);
   }
 
-  // Prova i modelli in catena: se uno non esiste, è muto, sovraccarico o fuori quota, passa al successivo
-  // e si ricorda quello che ha funzionato.
-  async generate(body, { deep = false, onThought, stream = true } = {}) {
+  // Prova i modelli in catena: se uno è muto, sovraccarico, inesistente o fuori quota lo mette a riposo
+  // e passa al successivo.
+  async generate(body, { deep = false, cheap = false, onThought, stream = true } = {}) {
     if (!store.get('models', null) && !getSettings().geminiModel) {
       try { await this.discoverModels(); } catch (e) { if (e.kind === 'bad-key') throw e; }
     }
-    const chain = this.chain(deep);
+    const chain = this.chain({ deep, cheap });
     let lastError;
     for (const model of chain) {
       const isDeep = deep && model === this.models().deep;
@@ -314,15 +347,15 @@ export class Brain {
         const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true, thinkingLevel: isDeep ? 'high' : 'low' } } } : body;
         try {
           const out = stream
-            ? await this.streamCall(model, b, onThought, isDeep ? 45000 : 10000)
+            ? await this.streamCall(model, b, onThought, isDeep ? 45000 : 9000)
             : { parts: await this.simpleCall(model, b) };
-          this.remember(model, isDeep);
+          this.lastModel = model;
           return out;
         } catch (e) {
           lastError = e;
           if (e.kind === 'no-key' || e.kind === 'bad-key') throw e;
           if (e.kind === 'no-thinking' && thinking) { thinking = false; continue; }
-          if (e.kind === 'quota' && isDeep) store.set('deepCooldown', Date.now() + DEEP_COOLDOWN);
+          this.cool(model, e);
           break; // prossimo modello
         }
       }
@@ -330,11 +363,13 @@ export class Brain {
     throw lastError || new BrainError('http', 'nessun modello disponibile');
   }
 
-  remember(model, isDeep) {
-    if (isDeep || getSettings().geminiModel) return;
-    const m = this.models();
-    if (m.fast === model && m.proven) return;
-    store.set('models', { ...m, fast: model, proven: true });
+  // Prova tecnica dalle impostazioni: non tocca la conversazione.
+  async selfTest() {
+    const t0 = Date.now();
+    const { parts } = await this.generate({
+      contents: [{ role: 'user', parts: [{ text: 'Prova tecnica: rispondi solo "Cervello operativo, Signore."' }] }],
+    });
+    return { text: parts.filter((p) => p.text).map((p) => p.text).join(' ').trim(), secs: (Date.now() - t0) / 1000, model: this.lastModel };
   }
 
   trimmedHistory() {
@@ -351,7 +386,7 @@ export class Brain {
       for (let step = 0; step < 8; step++) {
         const deep = !!this.brainstorm; // può attivarsi a metà, appena parte il brainstorming
         const { parts, blocked } = await this.generate({
-          systemInstruction: { parts: [{ text: systemPrompt({ brainstorm: this.brainstorm, summary: this.summary }) }] },
+          systemInstruction: { parts: [{ text: systemPrompt({ brainstorm: this.brainstorm, summary: this.summary, extra: this.extraContext ? this.extraContext() : '' }) }] },
           contents: this.trimmedHistory(),
           tools: [{ functionDeclarations: declarations }],
           generationConfig: { temperature: deep ? 1 : 0.85 },
@@ -409,7 +444,7 @@ export class Brain {
           role: 'user',
           parts: [{ text: `Riassunto precedente: ${this.summary || '(nessuno)'}\n\nNuova parte di conversazione:\n${transcript}\n\nScrivi un riassunto unico e denso (massimo 250 parole) di tutta la conversazione: temi, idee emerse, decisioni, domande aperte, tono. In italiano, in prosa.` }],
         }],
-      }, { stream: false });
+      }, { stream: false, cheap: true });
       const text = parts.filter((p) => p.text).map((p) => p.text).join(' ').trim();
       if (text) {
         this.summary = text;
@@ -436,7 +471,7 @@ export class Brain {
           parts: [{ text: `Sei Jarvis. Rileggi questa conversazione con il Signore:\n${recent}\n\nCose che sapevi già di lui:\n${known.join('\n') || '(niente)'}\n\nRispondi in JSON con:\n- "diario": una o due frasi in prima persona su di cosa avete parlato e come è andata (come un diario personale);\n- "fatti": array di fatti NUOVI e duraturi sul Signore (gusti, persone, progetti, abitudini), esclusi quelli già noti. Array vuoto se non ce ne sono.` }],
         }],
         generationConfig: { responseMimeType: 'application/json' },
-      }, { stream: false });
+      }, { stream: false, cheap: true });
       const raw = parts.filter((p) => p.text).map((p) => p.text).join('');
       const data = JSON.parse(raw.replace(/^```json|```$/g, '').trim());
       if (data.diario) {
@@ -458,7 +493,7 @@ export class Brain {
       systemInstruction: { parts: [{ text: 'Rispondi in italiano con un riassunto conciso e fattuale dei risultati, con date quando rilevanti. Niente link.' }] },
       contents: [{ role: 'user', parts: [{ text: query }] }],
       tools: [{ google_search: {} }],
-    }, { stream: false, deep: false }));
+    }, { stream: false, cheap: true }));
     } catch (e) {
       if (e.kind === 'quota') return 'La ricerca web non è inclusa nel piano gratuito di questa chiave: di\' al Signore che per ora non puoi cercare su internet, e rispondi con quello che sai.';
       throw e;

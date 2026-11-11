@@ -5,7 +5,8 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 // Su Android il riconoscimento "continuo" di Chrome ripete e accumula le frasi:
 // lì si usano sessioni brevi (una frase per volta) che ripartono da sole.
-const ANDROID = /Android/i.test(navigator.userAgent);
+// Lo stesso vale per iPhone e iPad, dove il riconoscimento continuo è instabile.
+const ANDROID = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 export class Ears {
   constructor({ onFinal, onInterim, onError, onActive }) {

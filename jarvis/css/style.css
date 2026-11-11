@@ -265,6 +265,7 @@ legend { font: 700 11px/1 Orbitron, sans-serif; letter-spacing: 0.2em; color: va
 code { font-size: 13px; color: var(--gold); word-break: break-all; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
+.diag { margin: 0; font: 12px/1.4 monospace; color: var(--cyan-dim); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; user-select: text; }
 .memories { margin: 0; padding: 0; list-style: none; font-size: 15px; max-height: 160px; overflow: auto; }
 .memories li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--cyan-faint); }
 .memories li button { background: none; border: none; color: var(--gold); cursor: pointer; }

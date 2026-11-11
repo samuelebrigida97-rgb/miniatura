@@ -2,7 +2,7 @@
 import { store, getSettings, saveSettings } from './store.js';
 import { NeuralCore } from './neural.js';
 import { Ears, Mouth } from './voice.js';
-import { Brain, BrainError } from './brain.js';
+import { Brain, BrainError, logError } from './brain.js';
 import { createHandlers, bindBrain, reminders, getWeather, weatherText } from './tools.js';
 import { spotify, redirectUri } from './spotify.js';
 import { seedMemories } from './seed.js';
@@ -10,6 +10,7 @@ import { seedMemories } from './seed.js';
 seedMemories();
 
 const $ = (id) => document.getElementById(id);
+const JARVIS_VERSION = '1.1';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi.
 const WAKE = /\b(jarvis|jarvi|jarviss|giarvis|jervis|gervis|charvis|jarbis|giarvi|jar vis)\b/i;
@@ -262,7 +263,7 @@ function handle(text) {
 }
 
 function errorMessage(e) {
-  if (!(e instanceof BrainError)) return `Qualcosa si è rotto nei miei circuiti, Signore: ${e.message}`;
+  if (!(e instanceof BrainError)) { logError(`js: ${e && e.stack ? e.stack.slice(0, 400) : e}`); return `Qualcosa si è rotto nei miei circuiti, Signore: ${e.message}`; }
   switch (e.kind) {
     case 'no-key': openSettings(); return 'Signore, mi manca il cervello: incolla la chiave Gemini nelle impostazioni.';
     case 'bad-key': sys('sys-brain', false, true); return 'La chiave Gemini non funziona, Signore. Controllala nelle impostazioni.';
@@ -437,6 +438,21 @@ function fillMemories() {
   });
 }
 
+function fillDiag() {
+  const m = store.get('models', null);
+  const errs = store.get('errors', []);
+  $('s-diag').textContent = [
+    `Versione: ${JARVIS_VERSION}`,
+    `Chiave Gemini: ${getSettings().geminiKey ? 'presente' : 'assente'}`,
+    `Modelli: ${m ? `${m.fast} / ${m.deep}` : 'non ancora scoperti'}`,
+    `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
+    `Udito: ${ears.supported ? 'supportato' : 'NON supportato'} · Voci italiane: ${mouth.italianVoices().length}`,
+    '',
+    errs.length ? 'Ultimi errori:' : 'Nessun errore registrato.',
+    ...errs.map((e) => `${e.t}  ${e.text}`),
+  ].join('\n');
+}
+
 function openSettings() {
   const s = getSettings();
   $('s-key').value = s.geminiKey;
@@ -452,6 +468,7 @@ function openSettings() {
   $('s-spotify-connect').textContent = spotify.isConnected() ? 'Scollega' : 'Collega Spotify';
   fillVoices();
   fillMemories();
+  fillDiag();
   if (!$('settings').open) $('settings').showModal();
 }
 
@@ -496,6 +513,27 @@ $('s-spotify-connect').addEventListener('click', async () => {
   }
 });
 
+$('s-test-brain').addEventListener('click', async () => {
+  saveSettings(readSettingsForm());
+  const btn = $('s-test-brain');
+  btn.textContent = 'Provo…'; btn.disabled = true;
+  try {
+    store.remove('models');
+    const m = await brain.warmup();
+    const t0 = Date.now();
+    const reply = await brain.ask('Prova tecnica: rispondi solo "Cervello operativo, Signore."');
+    $('s-test-result').textContent = `OK in ${((Date.now() - t0) / 1000).toFixed(1)}s con ${m.fast}: ${reply}`;
+    sys('sys-brain', true);
+  } catch (e) {
+    $('s-test-result').textContent = `ERRORE: ${e.kind || ''} ${e.message || e}`;
+    sys('sys-brain', false, true);
+  }
+  btn.textContent = 'Prova il cervello'; btn.disabled = false;
+  fillDiag();
+});
+
+$('s-clear-errors').addEventListener('click', () => { store.remove('errors'); fillDiag(); });
+
 $('s-reset-chat').addEventListener('click', () => {
   brain.reset();
   $('s-reset-chat').textContent = 'Fatto ✓';
@@ -507,6 +545,7 @@ $('settings').addEventListener('close', () => {
   const before = getSettings().city;
   saveSettings(readSettingsForm());
   sys('sys-brain', !!getSettings().geminiKey);
+  if (getSettings().geminiKey) { store.remove('models'); brain.warmup().then(() => sys('sys-brain', true)).catch(() => sys('sys-brain', false, true)); }
   if (before !== getSettings().city) {
     store.remove('geo');
     refreshWeather();
@@ -549,6 +588,7 @@ async function boot() {
 
   sys('sys-voice', !!window.speechSynthesis);
   sys('sys-brain', !!getSettings().geminiKey);
+  if (getSettings().geminiKey) brain.warmup().then(() => sys('sys-brain', true)).catch(() => sys('sys-brain', false, true));
 
   if (!ears.supported) {
     showJarvis('Questo browser non supporta il riconoscimento vocale. Usa Google Chrome sul tablet, Signore.');

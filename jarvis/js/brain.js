@@ -153,9 +153,12 @@ export class Brain {
       .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
       .map((m) => m.name.replace(/^models\//, ''))
       .filter((n) => /^gemini/.test(n) && !/image|tts|audio|live|embedding|vision|computer|robotics/.test(n));
-    const fast = names.filter((n) => /flash/.test(n)).sort((a, b) => modelRank(b) - modelRank(a))[0];
+    const fastList = names.filter((n) => /flash/.test(n)).sort((a, b) => modelRank(b) - modelRank(a));
     const deep = names.filter((n) => /pro/.test(n)).sort((a, b) => modelRank(b) - modelRank(a))[0];
-    const found = { fast: fast || DEFAULT_FAST, deep: deep || fast || DEFAULT_DEEP, ts: Date.now() };
+    const prev = store.get('models', null);
+    // se un modello veloce ha già dimostrato di funzionare, resta il preferito
+    const fast = prev && prev.proven && fastList.includes(prev.fast) ? prev.fast : fastList[0];
+    const found = { fast: fast || DEFAULT_FAST, deep: deep || fast || DEFAULT_DEEP, fastList, proven: !!(prev && prev.proven && fast === prev.fast), ts: Date.now() };
     store.set('models', found);
     return found;
   }
@@ -164,11 +167,27 @@ export class Brain {
     return store.get('models', { fast: DEFAULT_FAST, deep: DEFAULT_DEEP });
   }
 
-  // All'avvio: scopre i modelli disponibili per questa chiave (una volta al giorno).
+  // All'avvio: scopre i modelli della chiave e fa una prova lampo in parallelo sui primi,
+  // per scegliere subito uno che risponde davvero (una volta al giorno).
   async warmup() {
-    const m = store.get('models', null);
-    if (m && Date.now() - (m.ts || 0) < 24 * 3600 * 1000) return m;
-    try { return await this.discoverModels(); } catch (e) { return this.models(); }
+    const cur = store.get('models', null);
+    if (cur && cur.proven && Date.now() - (cur.ts || 0) < 24 * 3600 * 1000) return cur;
+    if (getSettings().geminiModel) return this.models();
+    const m = await this.discoverModels();
+    const candidates = (m.fastList || []).filter((n) => !/lite|omni|preview/.test(n)).slice(0, 5);
+    const lite = (m.fastList || []).find((n) => /lite/.test(n) && !/preview/.test(n));
+    if (lite) candidates.push(lite);
+    const ping = { contents: [{ role: 'user', parts: [{ text: 'Rispondi solo: ok' }] }], generationConfig: { maxOutputTokens: 200 } };
+    const results = await Promise.all(candidates.map(async (name) => {
+      try { await this.simpleCall(name, ping, 9000); return name; } catch { return null; }
+    }));
+    const alive = results.filter(Boolean);
+    if (alive.length) {
+      const next = { ...m, fast: alive[0], fastList: [...alive, ...(m.fastList || []).filter((n) => !alive.includes(n))], proven: true, ts: Date.now() };
+      store.set('models', next);
+      return next;
+    }
+    return m;
   }
 
   // Il modello profondo si usa in brainstorming, se non è "a riposo" per quota esaurita.
@@ -182,17 +201,23 @@ export class Brain {
 
   // ---------- chiamate ----------
 
-  async fetchJSON(url, body) {
+  async fetchJSON(url, body, timeoutMs = 20000) {
     let res;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.key() },
         body: JSON.stringify(body),
+        signal: ctl.signal,
       });
     } catch (e) {
       if (e instanceof BrainError) throw e;
-      throw new BrainError('network');
+      if (ctl.signal.aborted) throw new BrainError('timeout', url.replace(/.*models\//, ''));
+      throw new BrainError('network', String(e));
+    } finally {
+      clearTimeout(timer);
     }
     if (res.ok) return res;
     const text = await res.text();
@@ -206,8 +231,8 @@ export class Brain {
   }
 
   // Chiamata in streaming: i pensieri arrivano mentre il modello ragiona.
-  async streamCall(model, body, onThought) {
-    const res = await this.fetchJSON(`${BASE}/models/${model}:streamGenerateContent?alt=sse`, body);
+  async streamCall(model, body, onThought, firstMs = 14000) {
+    const res = await this.fetchJSON(`${BASE}/models/${model}:streamGenerateContent?alt=sse`, body, firstMs);
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = '';
@@ -226,9 +251,22 @@ export class Brain {
         if (p.thought && p.text) onThought?.(p.text);
       }
     };
+    let first = true;
     for (;;) {
       let chunk;
-      try { chunk = await reader.read(); } catch (e) { throw new BrainError('network', String(e)); }
+      // se il modello resta muto troppo a lungo, si passa al successivo
+      let timer;
+      const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(new BrainError('timeout', model)), first ? firstMs : 40000); });
+      try {
+        chunk = await Promise.race([reader.read(), limit]);
+      } catch (e) {
+        try { reader.cancel(); } catch { /* ignore */ }
+        if (e instanceof BrainError) throw e;
+        throw new BrainError('network', String(e));
+      } finally {
+        clearTimeout(timer);
+      }
+      first = false;
       const { done, value } = chunk;
       if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -242,42 +280,61 @@ export class Brain {
     return { parts: assemble(chunks), blocked };
   }
 
-  async simpleCall(model, body) {
-    const res = await this.fetchJSON(`${BASE}/models/${model}:generateContent`, body);
+  async simpleCall(model, body, timeoutMs = 25000) {
+    const res = await this.fetchJSON(`${BASE}/models/${model}:generateContent`, body, timeoutMs);
     const d = await res.json();
     return assemble(d.candidates?.[0]?.content?.parts || []);
   }
 
-  // Prova il modello scelto; se non esiste, se la quota è finita o non supporta il ragionamento, ripiega.
+  // Catena di modelli da provare, dal preferito ai ripieghi.
+  chain(deep) {
+    const override = getSettings().geminiModel;
+    if (override) return [override];
+    const m = this.models();
+    const list = [m.fast, ...(m.fastList || [])];
+    if (!list.includes(DEFAULT_FAST)) list.push(DEFAULT_FAST);
+    const cooling = Date.now() < (store.get('deepCooldown', 0) || 0);
+    if (deep && !cooling && m.deep) list.unshift(m.deep);
+    return [...new Set(list.filter(Boolean))].slice(0, 6);
+  }
+
+  // Prova i modelli in catena: se uno non esiste, è muto, sovraccarico o fuori quota, passa al successivo
+  // e si ricorda quello che ha funzionato.
   async generate(body, { deep = false, onThought, stream = true } = {}) {
-    let model = this.pickModel(deep);
-    let thinking = true;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      // ragionamento leggero nelle chiacchiere, profondo in brainstorming
-      const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true, thinkingLevel: deep ? 'high' : 'low' } } } : body;
-      try {
-        if (stream) return await this.streamCall(model, b, onThought);
-        return { parts: await this.simpleCall(model, b) };
-      } catch (e) {
-        if (e.kind === 'model' && !getSettings().geminiModel) {
-          const m = await this.discoverModels();
-          let next = deep ? m.deep : m.fast;
-          if (next === model && deep) next = m.fast; // il modello profondo non c'è: usa quello veloce
-          if (next === model) throw e; // già provato: niente da fare
-          model = next;
-        } else if (e.kind === 'quota' && model !== this.models().fast && !getSettings().geminiModel) {
-          store.set('deepCooldown', Date.now() + DEEP_COOLDOWN);
-          model = this.models().fast;
-        } else if (e.kind === 'no-thinking' && thinking) {
-          thinking = false;
-        } else if ((e.kind === 'overloaded' || e.kind === 'network') && attempt < 2) {
-          await new Promise((r) => setTimeout(r, 1500));
-        } else {
-          throw e;
+    if (!store.get('models', null) && !getSettings().geminiModel) {
+      try { await this.discoverModels(); } catch (e) { if (e.kind === 'bad-key') throw e; }
+    }
+    const chain = this.chain(deep);
+    let lastError;
+    for (const model of chain) {
+      const isDeep = deep && model === this.models().deep;
+      let thinking = true;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        // ragionamento leggero nelle chiacchiere, profondo in brainstorming
+        const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true, thinkingLevel: isDeep ? 'high' : 'low' } } } : body;
+        try {
+          const out = stream
+            ? await this.streamCall(model, b, onThought, isDeep ? 45000 : 10000)
+            : { parts: await this.simpleCall(model, b) };
+          this.remember(model, isDeep);
+          return out;
+        } catch (e) {
+          lastError = e;
+          if (e.kind === 'no-key' || e.kind === 'bad-key') throw e;
+          if (e.kind === 'no-thinking' && thinking) { thinking = false; continue; }
+          if (e.kind === 'quota' && isDeep) store.set('deepCooldown', Date.now() + DEEP_COOLDOWN);
+          break; // prossimo modello
         }
       }
     }
-    throw new BrainError('http', 'troppi tentativi');
+    throw lastError || new BrainError('http', 'nessun modello disponibile');
+  }
+
+  remember(model, isDeep) {
+    if (isDeep || getSettings().geminiModel) return;
+    const m = this.models();
+    if (m.fast === model && m.proven) return;
+    store.set('models', { ...m, fast: model, proven: true });
   }
 
   trimmedHistory() {

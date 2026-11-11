@@ -10,7 +10,7 @@ import { seedMemories } from './seed.js';
 seedMemories();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '1.1';
+const JARVIS_VERSION = '1.3';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi.
 const WAKE = /\b(jarvis|jarvi|jarviss|giarvis|jervis|gervis|charvis|jarbis|giarvi|jar vis)\b/i;
@@ -268,6 +268,7 @@ function errorMessage(e) {
     case 'no-key': openSettings(); return 'Signore, mi manca il cervello: incolla la chiave Gemini nelle impostazioni.';
     case 'bad-key': sys('sys-brain', false, true); return 'La chiave Gemini non funziona, Signore. Controllala nelle impostazioni.';
     case 'quota': return 'Ho finito le richieste gratuite per questo minuto, Signore. Dammi qualche secondo e riprova.';
+    case 'timeout': return 'Il mio cervello remoto non risponde in questo momento, Signore. Riprova tra poco.';
     case 'overloaded': return 'I server di Google sono sovraccarichi, Signore. Riprova tra poco.';
     case 'network': return 'Non riesco a raggiungere la rete, Signore. Controlla il Wi-Fi.';
     default: return 'Il mio cervello remoto ha avuto un singhiozzo, Signore. Riprova.';
@@ -444,7 +445,7 @@ function fillDiag() {
   $('s-diag').textContent = [
     `Versione: ${JARVIS_VERSION}`,
     `Chiave Gemini: ${getSettings().geminiKey ? 'presente' : 'assente'}`,
-    `Modelli: ${m ? `${m.fast} / ${m.deep}` : 'non ancora scoperti'}`,
+    `Modelli: ${m ? `${m.fast}${m.proven ? ' (verificato)' : ''} / ${m.deep}` : 'non ancora scoperti'}`,
     `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'} · Voci italiane: ${mouth.italianVoices().length}`,
     '',

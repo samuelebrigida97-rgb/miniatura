@@ -17,7 +17,12 @@ const BYES = ['A dopo, Signore.', 'Ciao Signore, io resto qui.', 'Quando vuoi, S
 const pick = (arr) => arr[(Math.random() * arr.length) | 0];
 
 const core = new NeuralCore($('core'));
-function placeStatus() { $('status').style.top = `${core.bottomEdge() + 8}px`; }
+function placeStatus() {
+  const edge = core.bottomEdge();
+  $('status').style.top = `${edge + 8}px`;
+  // in verticale i pensieri compaiono sotto il nucleo, in orizzontale in alto
+  $('thoughts').style.top = innerWidth < innerHeight ? `${edge + 34}px` : '';
+}
 placeStatus();
 window.addEventListener('resize', placeStatus);
 
@@ -113,9 +118,34 @@ const mouth = new Mouth({
   onEnd: () => {},
 });
 
+// Ascolto paziente: i pezzi di frase vengono accumulati e spediti solo dopo una pausa vera,
+// così il Signore può ragionare ad alta voce senza essere interrotto.
+const heard = { text: '', timer: null };
+function silenceMs() {
+  if (!state.conversation) return 700;
+  return brain.brainstorm ? 2600 : 1500;
+}
+function armSilence() {
+  clearTimeout(heard.timer);
+  heard.timer = setTimeout(() => {
+    const t = heard.text.trim();
+    heard.text = '';
+    if (t) onHeard(t);
+  }, silenceMs());
+}
+
 const ears = new Ears({
-  onFinal: (t) => onHeard(t),
-  onInterim: (t) => { if (state.conversation && !state.busy) showUser(t); },
+  onFinal: (t) => {
+    if (state.busy) return;
+    heard.text += ` ${t}`;
+    if (state.conversation) showUser(heard.text.trim());
+    armSilence();
+  },
+  onInterim: (t) => {
+    if (state.busy) return;
+    if (state.conversation) showUser(`${heard.text} ${t}`.trim());
+    if (heard.text) armSilence(); // sta ancora parlando: aspetta
+  },
   onActive: (on) => sys('sys-ears', on || ears.wanted),
   onError: (kind) => {
     if (kind === 'microfono-negato') {
@@ -129,6 +159,7 @@ const handlers = createHandlers({
   onRemindersChanged: refreshReminders,
   onSpotifyChanged: () => setTimeout(refreshMusic, 1200),
   endConversation: () => { state.endAfterReply = true; },
+  onBrainstormChanged: () => refreshBoard(),
 });
 const brain = new Brain(handlers);
 bindBrain(brain);
@@ -154,6 +185,8 @@ function endConversation() {
   state.conversation = false;
   state.endAfterReply = false;
   spotify.unduck();
+  if (brain.brainstorm) { brain.setBrainstorm(''); refreshBoard(); } // le idee restano salvate
+  brain.reflect(); // scrive il diario e impara cose nuove, in background
 }
 
 // ---------- logica principale ----------
@@ -209,12 +242,17 @@ function handle(text) {
     setMode('thinking');
     core.burst(40);
     let reply;
+    clearThoughts();
     try {
-      reply = await brain.ask(text, { onTool: () => core.burst(25) });
+      reply = await brain.ask(text, {
+        onTool: (name) => { core.burst(25); addThought(TOOL_LABELS[name] || name); },
+        onThought: (t) => { core.burst(15); addThought(t); },
+      });
     } catch (e) {
       reply = errorMessage(e);
     }
     sys('sys-brain', !!getSettings().geminiKey);
+    fadeThoughts();
     await say(reply || 'Uhm. Ho perso il filo, Signore.');
     if (state.endAfterReply) endConversation();
   });
@@ -225,10 +263,62 @@ function errorMessage(e) {
   switch (e.kind) {
     case 'no-key': openSettings(); return 'Signore, mi manca il cervello: incolla la chiave Gemini nelle impostazioni.';
     case 'bad-key': sys('sys-brain', false, true); return 'La chiave Gemini non funziona, Signore. Controllala nelle impostazioni.';
-    case 'quota': return 'Ho finito le richieste gratuite per questo minuto, Signore. Riprova tra poco.';
+    case 'quota': return 'Ho finito le richieste gratuite per questo minuto, Signore. Dammi qualche secondo e riprova.';
+    case 'overloaded': return 'I server di Google sono sovraccarichi, Signore. Riprova tra poco.';
     case 'network': return 'Non riesco a raggiungere la rete, Signore. Controlla il Wi-Fi.';
     default: return 'Il mio cervello remoto ha avuto un singhiozzo, Signore. Riprova.';
   }
+}
+
+// ---------- pensieri visibili ----------
+
+const TOOL_LABELS = {
+  meteo: 'consulto il meteo', cerca_sul_web: 'cerco sul web', data_ora: 'guardo l\'orologio',
+  crea_promemoria: 'annoto un promemoria', elenca_promemoria: 'controllo i promemoria',
+  cancella_promemoria: 'cancello promemoria', lista_aggiungi: 'aggiorno la lista',
+  lista_leggi: 'leggo la lista', lista_rimuovi: 'aggiorno la lista', ricorda: 'me lo segno in memoria',
+  dimentica: 'dimentico', spotify_riproduci: 'cerco su Spotify', spotify_comando: 'comando Spotify',
+  spotify_cosa_suona: 'ascolto cosa suona', brainstorming: 'preparo la lavagna',
+  salva_idea: 'salvo l\'idea', leggi_idee: 'rileggo le idee', termina_conversazione: 'chiudo',
+};
+
+// I "riassunti dei pensieri" di Gemini hanno spesso un titolo in grassetto: mostriamo quello.
+function thoughtHeadline(t) {
+  const bold = t.match(/\*\*(.+?)\*\*/);
+  const line = (bold ? bold[1] : t.split('\n').find((l) => l.trim()) || '').replace(/[*#_`]/g, '').trim();
+  return line.length > 90 ? `${line.slice(0, 87)}…` : line;
+}
+
+function addThought(t) {
+  const h = thoughtHeadline(t);
+  if (!h) return;
+  const box = $('thoughts');
+  const last = box.lastElementChild;
+  if (last && last.textContent === h) return;
+  const el = document.createElement('div');
+  el.className = 'thought';
+  el.textContent = h;
+  box.append(el);
+  while (box.children.length > 4) box.firstElementChild.remove();
+}
+
+function clearThoughts() { $('thoughts').innerHTML = ''; $('thoughts').classList.remove('fade'); }
+function fadeThoughts() { $('thoughts').classList.add('fade'); }
+
+// ---------- lavagna del brainstorming ----------
+
+function refreshBoard() {
+  const topic = brain.brainstorm;
+  $('board').hidden = !topic;
+  STATUS.listening = topic ? 'BRAINSTORMING · TI ASCOLTO' : 'TI ASCOLTO, SIGNORE';
+  if (state.mode === 'listening') setMode('listening');
+  if (!topic) return;
+  $('board-topic').textContent = topic;
+  const ideas = (store.get('boards', {})[topic] || []).slice(-7);
+  const ul = $('board-ideas');
+  ul.innerHTML = '';
+  ideas.forEach((i) => { const li = document.createElement('li'); li.textContent = i; ul.append(li); });
+  if (!ideas.length) ul.innerHTML = '<li class="empty">Ancora nessuna idea. Spara.</li>';
 }
 
 // ---------- promemoria ----------
@@ -480,6 +570,7 @@ $('btn-boot').addEventListener('click', boot);
   setInterval(refreshMusic, 30 * 1000);
   refreshReminders();
   refreshWeather();
+  refreshBoard();
 
   const sp = await spotify.handleRedirect().catch((e) => ({ ok: false, error: e.message }));
   if (sp && !sp.ok) showJarvis(`Il collegamento con Spotify non è riuscito: ${sp.error}`);

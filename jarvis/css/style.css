@@ -173,6 +173,37 @@ button {
 }
 .small.ghost { background: transparent; border-color: var(--cyan-faint); }
 
+/* ---- pensieri visibili ---- */
+.thoughts {
+  position: absolute;
+  left: 50%;
+  top: 70px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 2 * 220px));
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: opacity 1.2s ease;
+}
+.thoughts.fade { opacity: 0; }
+.thought {
+  font-size: 15px;
+  color: var(--gold);
+  opacity: 0.85;
+  font-style: italic;
+  animation: thought-in 0.6s ease both;
+}
+.thought:not(:last-child) { opacity: 0.4; }
+@keyframes thought-in { from { opacity: 0; transform: translateY(6px); filter: blur(3px); } }
+
+/* ---- lavagna brainstorming ---- */
+.ml { top: 130px; left: 16px; width: min(300px, 26vw); }
+.board-topic { font: 700 15px/1.2 Orbitron, sans-serif; color: var(--gold); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+.board-ideas { margin: 0; padding-left: 16px; font-size: 15px; display: flex; flex-direction: column; gap: 6px; }
+.board-ideas li::marker { color: var(--cyan); }
+.board-ideas .empty { list-style: none; margin-left: -16px; color: var(--cyan-dim); }
+
 /* ---- schermata di avvio ---- */
 .boot {
   position: fixed;
@@ -247,4 +278,7 @@ code { font-size: 13px; color: var(--gold); word-break: break-all; }
   .buttons { top: auto; bottom: 16px; right: 16px; flex-direction: row; }
   .subs { width: calc(100vw - 32px); min-width: 0; bottom: 76px; }
   .title { display: none; }
+  .thoughts { width: calc(100vw - 32px); }
+  .ml { top: 100px; left: 16px; right: 16px; width: auto; min-width: 0; }
+  .board-ideas li:nth-last-child(n+4) { display: none; }
 }

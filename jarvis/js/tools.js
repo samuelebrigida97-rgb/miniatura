@@ -206,6 +206,28 @@ export const declarations = [
   },
   { name: 'spotify_cosa_suona', description: 'Dice quale brano sta suonando su Spotify.' },
   {
+    name: 'brainstorming',
+    description: 'Attiva o chiude la modalità brainstorming: sessione lunga di idee su un tema, con ragionamento più profondo e una lavagna di idee sullo schermo. Riattivando un tema già usato, ritrovi le idee salvate.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        attiva: S('BOOLEAN', 'true per iniziare, false per chiudere'),
+        tema: S('STRING', 'Il tema della sessione, breve (es. "app per studenti", "regalo per Giulia")'),
+      },
+      required: ['attiva'],
+    },
+  },
+  {
+    name: 'salva_idea',
+    description: 'Salva un\'idea buona sulla lavagna del brainstorming in corso.',
+    parameters: { type: 'OBJECT', properties: { idea: S('STRING', 'L\'idea, in una frase chiara') }, required: ['idea'] },
+  },
+  {
+    name: 'leggi_idee',
+    description: 'Legge le idee salvate per un tema di brainstorming (o elenca i temi se non specificato).',
+    parameters: { type: 'OBJECT', properties: { tema: S('STRING', 'Tema, opzionale') } },
+  },
+  {
     name: 'termina_conversazione',
     description: 'Chiudi la conversazione e torna in attesa della parola "Jarvis". Usalo quando il Signore si congeda (es. "grazie è tutto", "a dopo", "buonanotte").',
   },
@@ -321,6 +343,40 @@ export function createHandlers(ctx) {
 
     async spotify_cosa_suona() {
       return spotify.nowPlaying();
+    },
+
+    async brainstorming({ attiva, tema }) {
+      const boards = store.get('boards', {});
+      if (!attiva) {
+        const t = brainRef?.brainstorm;
+        brainRef?.setBrainstorm('');
+        ctx.onBrainstormChanged();
+        return { ok: true, idee_della_sessione: t ? boards[t] || [] : [] };
+      }
+      const key = (tema || 'idee libere').toLowerCase().trim();
+      // riusa un tema simile già esistente
+      const existing = Object.keys(boards).find((k) => k.includes(key) || key.includes(k)) || key;
+      boards[existing] = boards[existing] || [];
+      store.set('boards', boards);
+      brainRef?.setBrainstorm(existing);
+      ctx.onBrainstormChanged();
+      return { ok: true, tema: existing, idee_gia_salvate: boards[existing] };
+    },
+
+    async salva_idea({ idea }) {
+      const boards = store.get('boards', {});
+      const key = brainRef?.brainstorm || 'idee libere';
+      boards[key] = [...(boards[key] || []), idea];
+      store.set('boards', boards);
+      ctx.onBrainstormChanged();
+      return { ok: true, totale_idee: boards[key].length };
+    },
+
+    async leggi_idee({ tema }) {
+      const boards = store.get('boards', {});
+      if (!tema) return { temi: Object.keys(boards).map((k) => ({ tema: k, idee: boards[k].length })) };
+      const key = Object.keys(boards).find((k) => k.includes(tema.toLowerCase()) || tema.toLowerCase().includes(k));
+      return key ? { tema: key, idee: boards[key] } : { errore: 'Nessun tema simile trovato.' };
     },
 
     async termina_conversazione() {

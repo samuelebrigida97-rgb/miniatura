@@ -8,22 +8,38 @@ Jarvis è una web app che gira nel browser Chrome del tablet Android. Non ha ser
 
 ## Cosa sa fare
 
-- **Si sveglia quando dici «Jarvis».** Da quel momento resta in conversazione e ti ascolta dopo ogni risposta, finché non lo saluti («ok ciao Jarvis», «a dopo Jarvis», «grazie, è tutto»).
-- **Ti chiama Signore,** ma con il tono di un amico. Non ti dà ragione per forza: se dici una sciocchezza, te lo fa notare.
-- **Usa gli strumenti:**
+### Una mente, non un altoparlante
+- **Ragiona prima di rispondere.** Usa la modalità di ragionamento di Gemini. Mentre pensa, i suoi pensieri compaiono in oro vicino ai neuroni, che si accendono.
+- **Ha un carattere.** Ti chiama Signore ma ti tratta da amico. Ha opinioni sue, fa domande e non ti dà ragione per forza: se dici una sciocchezza, te lo dice e ti spiega perché.
+- **Si ricorda di te.**
+  - La conversazione resta salvata anche se chiudi l'app.
+  - Le parti vecchie vengono riassunte invece di essere dimenticate.
+  - Quando lo saluti scrive un **diario** della chiacchierata e annota cosa ha imparato su di te, così la volta dopo può dirti «l'altra volta mi dicevi che…».
+- **Ti lascia finire.** Aspetta una vera pausa prima di rispondere, quindi puoi ragionare ad alta voce.
+
+### Brainstorming
+Di' ad esempio «Jarvis, facciamo brainstorming su un regalo per mia madre».
+- Passa al modello più potente (Gemini Pro). Se la quota gratuita finisce, torna da solo a Flash senza interrompersi.
+- Fa da sparring partner: costruisce sulle tue idee, smonta quelle deboli e propone alternative strane.
+- Ti concede pause più lunghe prima di rispondere.
+- Le idee migliori finiscono su una **lavagna** a lato dello schermo e restano salvate: se riprendi lo stesso tema giorni dopo, le ritrova.
+
+### Il resto
+- **Si sveglia quando dici «Jarvis»** e resta in conversazione finché non lo saluti («ok ciao Jarvis», «grazie, è tutto»).
+- **Strumenti:**
   - meteo
   - notizie e ricerche sul web
   - promemoria, timer e sveglie
-  - liste (la spesa, cose da fare)
-  - memoria a lungo termine («ricordati che…»)
+  - liste
+  - memoria
   - Spotify completo
 - **Briefing del mattino:** di' «Jarvis, buongiorno».
-- **Racconta storie** su richiesta.
+- **Storie** su richiesta.
 - **Tocchi sullo schermo:**
   - tocca il nucleo mentre parla per interromperlo;
   - tocca il nucleo quando è in attesa per svegliarlo senza parlare;
-  - ⌨ apre la tastiera per scrivergli;
-  - ⚙ apre le impostazioni.
+  - ⌨ per scrivergli;
+  - ⚙ per le impostazioni (anche per vedere e cancellare cosa ricorda di te).
 
 ---
 

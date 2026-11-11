@@ -26,7 +26,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '2.1';
+const JARVIS_VERSION = '2.2';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -759,7 +759,10 @@ async function boot() {
   if (getSettings().geminiKey) brain.warmup().then(() => sys('sys-brain', true)).catch(() => sys('sys-brain', false, true));
 
   if (!ears.supported) {
-    showJarvis('Questo browser non supporta il riconoscimento vocale. Usa Google Chrome sul tablet, Signore.');
+    const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    showJarvis(ios
+      ? 'Su iPhone posso ascoltarti solo se mi apri con Safari, Signore. Qui puoi comunque scrivermi con la tastiera.'
+      : 'Questo browser non mi lascia usare il microfono, Signore: aprimi con Google Chrome. Intanto puoi scrivermi con la tastiera.');
   }
 
   // chiede la posizione adesso, dentro il tocco: così Chrome mostra la richiesta di permesso

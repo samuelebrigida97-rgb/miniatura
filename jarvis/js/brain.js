@@ -15,6 +15,7 @@ export class BrainError extends Error {
     super(message || kind);
     this.kind = kind;
     // per la quota basta sapere quale modello e quale limite, non tutto il messaggio di Google
+    if (kind === 'cancelled') return; // interruzione voluta, non un errore
     const quota = kind === 'quota' && (message || '').match(/limit: \d+, model: [\w.-]+/);
     logError(`${kind}: ${quota ? `${quota[0]}${/per day/i.test(message) ? ' (al giorno)' : ''}` : (message || '').slice(0, 300)}`);
   }
@@ -56,6 +57,9 @@ MODALITÀ BRAINSTORMING ATTIVA — tema: «${brainstorm}»
 - Quando emerge un'idea buona (sua o tua), salvala con salva_idea in una frase chiara.
 - Le risposte possono essere più lunghe del solito (anche sei-otto frasi) ma devono restare parlate, non un documento.
 - La sessione dura quanto vuole il Signore. Chiudila con brainstorming(attiva=false) solo se te lo chiede, facendo un riassunto finale delle idee migliori.` : ''}
+
+- Se nella conversazione vedi "[interrotto dal Signore…]", ti ha fermato a metà frase: non ricominciare da capo e non offenderti, rispondi a quello che dice adesso. Al massimo una battuta.
+- Niente frasi da assistente servile ("Certo!", "Ottima domanda", "Come posso aiutarti?", "Spero di esserti stato utile"). Entra subito nel merito. Ironia asciutta, mai sdolcinata; se una cosa è una pessima idea, dillo con garbo ma dillo.
 
 COME PARLI
 - Tutto ciò che scrivi viene letto ad alta voce da una sintesi vocale italiana: niente markdown, asterischi, elenchi puntati, emoji o link. Numeri, orari e unità scritti come si dicono.
@@ -123,6 +127,21 @@ function assemble(chunks, onThought) {
   }
   return parts;
 }
+
+// Comandi "secchi": quando il modello chiama solo uno di questi strumenti per una richiesta breve,
+// la conferma la dà Jarvis da solo, senza un secondo giro dal modello (metà attesa, metà richieste).
+const one = (arr) => arr[(Math.random() * arr.length) | 0];
+const QUICK_CONFIRM = {
+  crea_promemoria: (a, r) => one([`Fatto, Signore: ${r.quando}.`, `Segnato per ${r.quando}.`, `Te lo ricordo ${r.quando}, Signore.`]),
+  cancella_promemoria: (a, r) => (r.cancellati ? one(['Cancellato.', 'Tolto di mezzo, Signore.']) : 'Non ho trovato nessun promemoria così, Signore.'),
+  lista_aggiungi: (a, r) => one([`Aggiunto alla lista ${r.lista}.`, `Messo nella lista ${r.lista}, Signore.`]),
+  lista_rimuovi: (a, r) => `Lista ${r.lista} aggiornata.`,
+  spotify_riproduci: (a, r) => (r.ok ? one([`Ecco ${r.in_riproduzione}.`, `Subito: ${r.in_riproduzione}.`]) : r.messaggio),
+  spotify_comando: () => one(['Fatto.', 'Eseguito, Signore.']),
+  vai_a_riposo: () => 'Buonanotte, Signore. Tocca lo schermo quando mi vuoi.',
+  termina_conversazione: () => one(['A dopo, Signore.', 'Quando vuoi, Signore.', 'Io resto qui, Signore.']),
+  apri_sul_tablet: () => 'Pulsante pronto sullo schermo, Signore: toccalo.',
+};
 
 export class Brain {
   constructor(handlers) {
@@ -241,6 +260,7 @@ export class Brain {
   async fetchJSON(url, body, timeoutMs = 20000) {
     let res;
     const ctl = new AbortController();
+    this._fetchCtl = ctl;
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       res = await fetch(url, {
@@ -251,6 +271,7 @@ export class Brain {
       });
     } catch (e) {
       if (e instanceof BrainError) throw e;
+      if (this.cancelFlag) throw new BrainError('cancelled');
       if (ctl.signal.aborted) throw new BrainError('timeout', url.replace(/.*models\//, ''));
       throw new BrainError('network', String(e));
     } finally {
@@ -303,8 +324,9 @@ export class Brain {
       // se il modello resta muto troppo a lungo, si passa al successivo
       let timer;
       const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(fail(new BrainError('timeout', model))), first ? firstMs : 40000); });
+      const stopped = new Promise((_, rej) => { this._onCancel = () => rej(new BrainError('cancelled')); });
       try {
-        chunk = await Promise.race([reader.read(), limit]);
+        chunk = await Promise.race([reader.read(), limit, stopped]);
       } catch (e) {
         try { reader.cancel(); } catch { /* ignore */ }
         if (e instanceof BrainError) throw fail(e);
@@ -313,6 +335,7 @@ export class Brain {
         clearTimeout(timer);
       }
       first = false;
+      if (this.cancelFlag) { try { reader.cancel(); } catch { /* ignore */ } throw new BrainError('cancelled'); }
       const { done, value } = chunk;
       if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -374,7 +397,7 @@ export class Brain {
           return out;
         } catch (e) {
           lastError = e;
-          if (e.kind === 'no-key' || e.kind === 'bad-key') throw e;
+          if (e.kind === 'no-key' || e.kind === 'bad-key' || e.kind === 'cancelled') throw e;
           if (e.spoken) throw e; // metà risposta è già stata detta: non si ricomincia con un altro modello
           if (e.kind === 'no-thinking' && thinking) { thinking = false; continue; }
           if (e.kind === 'http') throw e; // richiesta rifiutata: cambiare modello non serve
@@ -424,7 +447,25 @@ export class Brain {
     this.persist();
   }
 
-  async ask(text, { onTool, onThought, onText } = {}) {
+  // Il Signore ha interrotto: si smette di generare.
+  cancel() {
+    this.cancelFlag = true;
+    try { this._fetchCtl && this._fetchCtl.abort(); } catch { /* ignore */ }
+    if (this._onCancel) this._onCancel();
+  }
+
+  // Segna nella memoria che l'ultima risposta è stata interrotta a metà.
+  markInterrupted() {
+    const last = this.history[this.history.length - 1];
+    const part = last && last.role === 'model' && last.parts.find((p) => typeof p.text === 'string' && p.text.trim());
+    if (part && !/\[interrotto/.test(part.text)) { part.text += ' [interrotto dal Signore mentre lo dicevi]'; this.persist(); }
+  }
+
+  async ask(text, { onTool, onThought, onText: onTextOuter } = {}) {
+    this.cancelFlag = false;
+    let said = '';
+    const onText = (delta) => { said += delta; onTextOuter?.(delta); };
+    const shortRequest = text.trim().split(/\s+/).length <= 14;
     const startLen = this.history.length;
     // Se è passato del tempo dall'ultimo scambio, lo fa sapere al modello: stessa memoria, nuova sessione.
     const gapMin = this.lastTurnAt ? (Date.now() - this.lastTurnAt) / 60000 : 0;
@@ -469,6 +510,7 @@ export class Brain {
         }
 
         const responses = [];
+        let lastCall = null;
         for (const { functionCall } of calls) {
           const { name, args = {}, id } = functionCall;
           onTool?.(name);
@@ -480,10 +522,30 @@ export class Brain {
             result = { errore: e.message || String(e) };
           }
           responses.push({ functionResponse: { name, response: { result }, ...(id ? { id } : {}) } });
+          lastCall = { name, args, result };
         }
         this.history.push({ role: 'user', parts: responses });
+
+        // comando secco: conferma immediata, senza tornare dal modello
+        const hadText = parts.some((p) => typeof p.text === 'string' && p.text.trim());
+        if (step === 0 && shortRequest && calls.length === 1 && !hadText && QUICK_CONFIRM[lastCall.name] && lastCall.result && !lastCall.result.errore) {
+          const confirm = QUICK_CONFIRM[lastCall.name](lastCall.args, lastCall.result);
+          if (confirm) {
+            this.history.push({ role: 'model', parts: [{ text: confirm }] });
+            onText(confirm);
+            ok = true;
+            return confirm;
+          }
+        }
       }
       return 'Mi sono perso nei miei stessi circuiti, Signore. Riproviamo?';
+    } catch (e) {
+      if (e.kind !== 'cancelled') throw e;
+      // interrotto mentre parlava: quello che ha fatto in tempo a dire resta in memoria, segnato
+      if (said.trim()) this.history.push({ role: 'model', parts: [{ text: `${said.trim()} [interrotto dal Signore mentre lo dicevi]` }] });
+      else this.history.push({ role: 'model', parts: [{ text: '[interrotto dal Signore prima di rispondere]' }] });
+      ok = true;
+      return said;
     } finally {
       if (ok) {
         this.lastTurnAt = Date.now();

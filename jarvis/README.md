@@ -20,9 +20,16 @@ Jarvis è una web app che gira nel browser Chrome del tablet Android. Non ha ser
 
 ### Veloce
 - **Parla mentre pensa.** Comincia a rispondere a voce dalla prima frase, mentre il resto della risposta sta ancora arrivando.
-- **Comandi istantanei**, senza passare dal cervello e senza consumare richieste: «che ore sono», «che giorno è», «timer di 10 minuti», e con Spotify «pausa», «riprendi», «prossima», «precedente», «alza/abbassa il volume», «volume al 40».
+- **Comandi istantanei**, senza passare dal cervello e senza consumare richieste: «che ore sono», «che giorno è», «timer di 10 minuti», e con Spotify «metti i Queen», «fammi sentire…», «metti la playlist…», «pausa», «riprendi», «prossima», «precedente», «alza/abbassa il volume», «volume al 40». Anche promemoria, liste e musica chiesti con parole tue vengono confermati subito, senza un secondo giro dal cervello.
 - **Memoria al volo.** A ogni domanda riceve i ricordi che c'entrano con quello che stai dicendo, e può frugare da solo nei ricordi vecchi, nel diario e nelle idee salvate.
 - **Apre altre app con un tuo tocco.** «Portami a…», «cercami su YouTube…», «scrivi su WhatsApp a…»: prepara un pulsante dorato sullo schermo. Android non permette a una pagina web di aprire app da sola, quindi serve il tocco.
+
+### Si lascia interrompere
+- **A voce:** se inizi a parlare mentre lui parla, si zittisce in circa mezzo secondo e ti ascolta. Mentre parla non trascrive nulla: misura solo se arriva una voce vicina, con la cancellazione dell'eco per non sentire se stesso. Silenzio, rumore di fondo e voci lontane non lo fermano.
+- **Col dito:** un tocco in qualsiasi punto dello schermo lo ferma sempre.
+- Si ricorda di essere stato interrotto e non ricomincia da capo.
+- In ⚙ → Ascolto scegli la sensibilità o la spegni. Se scatta a vuoto due volte di fila, abbassa la sensibilità da solo. Su iPhone e iPad parte spenta, perché lì abbassa il volume della voce: resta il tocco.
+- Limite: con l'Alexa come cassa Bluetooth la cancellazione dell'eco funziona peggio. Se si interrompe da solo, usa la sensibilità bassa o spegnila.
 
 ### Brainstorming
 Di' ad esempio «Jarvis, facciamo brainstorming su un regalo per mia madre».

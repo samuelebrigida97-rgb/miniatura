@@ -501,6 +501,7 @@ export function createHandlers(ctx) {
     async spotify_riproduci({ cerca, tipo }) {
       const r = await spotify.play(cerca, tipo);
       ctx.onSpotifyChanged();
+      if (r.ok) ctx.musicStarted(); // la musica parte a volume pieno e Jarvis torna in attesa
       return r;
     },
 

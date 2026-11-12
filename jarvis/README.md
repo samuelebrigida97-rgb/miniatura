@@ -51,6 +51,34 @@ Di' ad esempio «Jarvis, facciamo brainstorming su un regalo per mia madre».
 
 ---
 
+## Su quali dispositivi funziona
+
+| Dispositivo | Con cosa aprirlo | Note |
+|---|---|---|
+| Tablet e telefoni **Android** | **Chrome** | Ascolto continuo, è la versione più completa. |
+| **iPad** | **Safari** | Come su Android. Chrome per iPad non dà il microfono. |
+| **iPhone** | **Safari** | Come sopra. Se Safari non riaccende il microfono da solo compare «Tocca per parlare». |
+| Computer | Chrome o Edge | Utile per provarlo. |
+
+Il link è lo stesso per tutti. Ogni dispositivo ha la **sua memoria**: per portarla da uno all'altro usa ⚙ → *Porta la memoria su un altro dispositivo* (Copia su uno, Importa sull'altro).
+
+### iPad e iPhone, passo per passo
+1. Apri il link con **Safari**.
+2. Tasto **Condividi** (il quadrato con la freccia) → **Aggiungi alla schermata Home**. Da ora aprilo dall'icona.
+3. Tocca **ATTIVA** e rispondi **Consenti** a microfono, riconoscimento vocale e posizione.
+4. Se il microfono non parte: Impostazioni → Generali → Tastiera → attiva **Dettatura**; Impostazioni → Siri → attiva Siri. Il riconoscimento vocale di Safari passa da lì.
+5. Se aperto dall'icona dice che non ha il microfono (succede su alcune versioni di iOS), aprilo da Safari: tutto il resto è identico.
+6. Per sentire la voce: volume alto e **tasto silenzioso spento**.
+
+### iPad fisso su un mobile (modalità «padrone del tablet»)
+1. Impostazioni → Schermo e luminosità → **Blocco automatico → Mai**. Tienilo in carica.
+2. Impostazioni → Accessibilità → **Accesso Guidato** → attivalo e scegli un codice.
+3. Apri Jarvis, poi premi **tre volte** il tasto superiore (o il tasto Home): l'iPad resta bloccato su Jarvis. Per uscire, di nuovo tre volte e il codice.
+4. Di notte: «buonanotte Jarvis» o il tasto ☾.
+
+### Sempre aggiornato
+Ogni volta che lo apri carica da solo l'ultima versione. Se resta acceso per giorni, controlla ogni mezz'ora: quando esce una versione nuova te lo dice a voce e compare una scritta dorata in alto. Un tocco e si aggiorna (poi tocchi ATTIVA). Puoi controllare a mano da ⚙ → Diagnostica → **Cerca aggiornamenti**.
+
 ## Installazione (una volta sola)
 
 ### 1. Metti Jarvis online (GitHub Pages)

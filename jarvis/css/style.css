@@ -228,6 +228,12 @@ body.is-off .status, body.is-off .subs { visibility: hidden; }
 body.is-rest .buttons { display: none; }
 
 /* ---- avvisi toccabili ---- */
+.voice-chip {
+  position: fixed; z-index: 8; left: 50%; transform: translateX(-50%);
+  top: calc(60px + env(safe-area-inset-top, 0px)); padding: 14px 20px; white-space: nowrap;
+  border: 1px solid var(--gold); color: var(--gold); background: rgba(40, 30, 0, 0.85);
+  font: 700 13px/1 Orbitron, sans-serif; letter-spacing: 0.14em; box-shadow: 0 0 26px rgba(255, 207, 122, 0.4);
+}
 .open-link {
   position: fixed; z-index: 8; left: 50%; transform: translateX(-50%);
   bottom: calc(150px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 32px);

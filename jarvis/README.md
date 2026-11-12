@@ -90,7 +90,13 @@ Il link è lo stesso per tutti. Ogni dispositivo ha la **sua memoria**: per port
 4. Di notte: «buonanotte Jarvis» o il tasto ☾.
 
 ### Sempre aggiornato
-Ogni volta che lo apri carica da solo l'ultima versione. Se resta acceso per giorni, controlla ogni mezz'ora: quando esce una versione nuova te lo dice a voce e compare una scritta dorata in alto. Un tocco e si aggiorna (poi tocchi ATTIVA). Puoi controllare a mano da ⚙ → Diagnostica → **Cerca aggiornamenti**.
+Un'app sulla schermata Home non ha il tasto «ricarica», quindi Jarvis ci pensa da solo:
+- controlla se c'è una versione nuova ogni 10 minuti e ogni volta che torna in primo piano;
+- appena è libero (non sta parlando, pensando o conversando) si ricarica e **si riaccende da solo**, dicendo «Mi sono aggiornato alla versione X»;
+- se eri in modalità notte, si aggiorna in silenzio e resta in modalità notte;
+- se dopo la ricarica il browser non gli concede la voce senza un tocco, continua ad ascoltare e mostra «Tocca lo schermo per ridarmi la voce».
+
+A mano: ⚙ → Diagnostica → **Cerca aggiornamenti**. La versione in uso è la prima riga della Diagnostica.
 
 ## Installazione (una volta sola)
 

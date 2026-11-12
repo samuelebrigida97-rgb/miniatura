@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.6';
+const JARVIS_VERSION = '3.7';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -983,34 +983,52 @@ window.addEventListener('online', () => { if (state.mode !== 'off') { refreshWea
 // All'apertura Jarvis carica sempre l'ultima versione. Se resta acceso per giorni,
 // controlla ogni mezz'ora: quando ne esce una nuova lo dice e basta un tocco per installarla.
 
-let updateAnnounced = false;
+// Un'app sulla schermata Home non ha il tasto «ricarica»: senza questo meccanismo resterebbe
+// ferma alla versione di quando è stata aperta. Quindi: appena esce una versione nuova e Jarvis
+// è libero (non sta parlando, pensando o conversando), si ricarica da solo e si riaccende.
+let pendingUpdate = null;
+
+function idleForUpdate() {
+  return !state.busy && !state.conversation && !$('settings').open && document.visibilityState === 'visible';
+}
+
+function applyUpdate(version) {
+  let already = null;
+  try { already = sessionStorage.getItem('jarvis.reloadedFor'); } catch { /* ignore */ }
+  if (already === version) return false; // già provato per questa versione: niente giri a vuoto
+  try {
+    sessionStorage.setItem('jarvis.reloadedFor', version);
+    // dopo la ricarica si riaccende da solo, nello stato in cui era
+    if (state.mode !== 'off') sessionStorage.setItem('jarvis.resume', state.rest ? 'rest' : 'on');
+  } catch { /* ignore */ }
+  location.reload();
+  return true;
+}
+
 async function checkForUpdate() {
   try {
     const r = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (!r.ok) return;
+    if (!r.ok) return 'errore';
     const { version } = await r.json();
-    if (!version || version === JARVIS_VERSION) return 'aggiornato';
-    let already = null;
-    try { already = sessionStorage.getItem('jarvis.reloadedFor'); } catch { /* ignore */ }
-    if (state.mode === 'off' && already !== version) { // spento: si aggiorna da solo, una volta sola
-      try { sessionStorage.setItem('jarvis.reloadedFor', version); } catch { /* ignore */ }
-      location.reload();
-      return 'ricarico';
-    }
+    if (!version || version === JARVIS_VERSION) { pendingUpdate = null; return 'aggiornato'; }
+    pendingUpdate = version;
+    if (state.mode === 'off' || idleForUpdate()) { if (applyUpdate(version)) return 'ricarico'; }
+    // occupato (o ricarica già tentata): resta la scritta dorata, e si riprova appena è libero
     $('btn-update').hidden = false;
     $('btn-update').textContent = `AGGIORNAMENTO ${version} PRONTO · TOCCA`;
-    if (!updateAnnounced && !state.rest) {
-      updateAnnounced = true;
-      state.queue.push('Signore, è pronto un mio aggiornamento. Tocca la scritta in alto quando vuoi installarlo.');
-      if (!state.busy) run(async () => {});
-    }
     return version;
   } catch {
     return 'errore'; // senza rete riproverà
   }
 }
+// appena torna libero, applica l'aggiornamento rimasto in sospeso
+setInterval(() => { if (pendingUpdate && state.mode !== 'off' && idleForUpdate()) applyUpdate(pendingUpdate); }, 15000);
+
 $('btn-update').addEventListener('click', () => {
-  try { sessionStorage.setItem('jarvis.justUpdated', '1'); } catch { /* ignore */ }
+  try {
+    sessionStorage.setItem('jarvis.justUpdated', '1');
+    sessionStorage.removeItem('jarvis.reloadedFor');
+  } catch { /* ignore */ }
   location.reload();
 });
 $('s-update').addEventListener('click', async () => {
@@ -1123,6 +1141,7 @@ async function keepAwake() {
 }
 let screenAwake = 'non ancora richiesto';
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkForUpdate(); // ogni volta che torna in primo piano
   if (document.visibilityState === 'visible' && state.mode !== 'off') {
     keepAwake();
     refreshWeather();
@@ -1144,13 +1163,15 @@ function greeting() {
   return 'Sistemi online. Buonasera, Signore.';
 }
 
-async function boot() {
+// auto = riaccensione automatica dopo un aggiornamento (nessun tocco): 'on' oppure 'rest'
+async function boot(auto) {
+  if (typeof auto !== 'string') auto = '';
   mouth.unlock(); // subito, dentro il tocco
   unlockAudio();
   keepAwake(); // anche questo dentro il tocco: la riserva per Apple parte solo così
   if (ears.supported && IOS) { try { ears.start(); } catch { /* ignore */ } } // Safari chiede il microfono solo dentro un tocco
   $('boot').classList.add('gone');
-  try { await document.documentElement.requestFullscreen?.(); } catch { /* ignore */ }
+  if (!auto) { try { await document.documentElement.requestFullscreen?.(); } catch { /* ignore */ } }
   keepAwake();
   setMode('thinking');
   core.burst(120);
@@ -1180,13 +1201,25 @@ async function boot() {
   // chiede a Chrome di non cancellare mai la memoria di Jarvis (chiave, ricordi, diario)
   try { navigator.storage?.persist?.().then((ok) => { storagePersistent = ok; }); } catch { /* ignore */ }
 
-  await new Promise((r) => setTimeout(r, 1400));
+  if (auto === 'rest') { // era in modalità notte: ci torna, in silenzio
+    enterRest();
+    return;
+  }
+  await new Promise((r) => setTimeout(r, auto ? 400 : 1400));
   state.busy = true;
   try {
-    await say(getSettings().geminiKey ? greeting() : 'Sistemi online, Signore. Mi manca solo il cervello: incolla la chiave Gemini nelle impostazioni.');
+    const hello = auto ? `Mi sono aggiornato alla versione ${JARVIS_VERSION}, Signore.`
+      : getSettings().geminiKey ? greeting() : 'Sistemi online, Signore. Mi manca solo il cervello: incolla la chiave Gemini nelle impostazioni.';
+    await say(hello);
     if (noMic) await say(noMic); // lo dice anche a voce: è il motivo per cui "non sente"
   } finally {
     state.busy = false;
+  }
+  // senza un tocco il browser può negare la voce: l'ascolto funziona comunque, e basta toccare lo schermo
+  if (auto && mouth.lastProblem) {
+    const chip = $('btn-voice');
+    chip.hidden = false;
+    document.addEventListener('pointerdown', () => { chip.hidden = true; mouth.lastProblem = ''; sys('sys-voice', true); }, { once: true, capture: true });
   }
   if (!getSettings().geminiKey) openSettings();
   await flushQueue();
@@ -1195,7 +1228,7 @@ async function boot() {
   if (getSettings().geminiKey) brain.reflectIfPending();
 }
 
-$('btn-boot').addEventListener('click', boot);
+$('btn-boot').addEventListener('click', () => boot());
 
 // Android senza microfono (Samsung Internet, Firefox…): pulsante per riaprire in Chrome.
 function offerChrome() {
@@ -1214,7 +1247,8 @@ function offerChrome() {
   setInterval(checkReminders, 1000);
   setInterval(refreshWeather, 15 * 60 * 1000);
   setInterval(refreshMusic, 30 * 1000);
-  setInterval(checkForUpdate, 30 * 60 * 1000);
+  setInterval(checkForUpdate, 10 * 60 * 1000);
+  setTimeout(checkForUpdate, 45 * 1000);
   refreshReminders();
   if (knownLocation() || getSettings().place) refreshWeather(); // altrimenti aspetta il tocco su ATTIVA
   refreshBoard();
@@ -1222,6 +1256,11 @@ function offerChrome() {
   const sp = await spotify.handleRedirect().catch((e) => ({ ok: false, error: e.message }));
   if (sp && !sp.ok) showJarvis(`Il collegamento con Spotify non è riuscito: ${sp.error}`);
   if (sp && sp.ok) showJarvis('Spotify collegato, Signore. Tocca ATTIVA e chiedimi un po\' di musica.');
+  // riaccensione automatica dopo un aggiornamento
+  let resume = '';
+  try { resume = sessionStorage.getItem('jarvis.resume') || ''; sessionStorage.removeItem('jarvis.resume'); } catch { /* ignore */ }
+  if (resume) setTimeout(() => boot(resume), 300);
+
   let justUpdated = false;
   try { justUpdated = sessionStorage.getItem('jarvis.justUpdated') === '1'; sessionStorage.removeItem('jarvis.justUpdated'); } catch { /* ignore */ }
   if (justUpdated) $('boot-hint').textContent = `Aggiornato alla versione ${JARVIS_VERSION}. Tocca ATTIVA per riaccendermi.`;

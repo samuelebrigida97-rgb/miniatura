@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.8';
+const JARVIS_VERSION = '3.9';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -490,6 +490,19 @@ async function quickCommand(raw) {
   if (!t || t.split(' ').length > 7) return null;
   const now = new Date();
 
+  // collegare Spotify a voce
+  if (/^(collega|collegami|connetti|collegati|connettiti|attiva)( a| con)? spotify$|^spotify collega$/.test(t)) {
+    if (spotify.isConnected()) return 'Spotify è già collegato, Signore. Dimmi cosa vuoi sentire.';
+    if (!getSettings().spotifyClientId) {
+      setTimeout(openSettings, 400);
+      return 'Mi manca il Client ID di Spotify, Signore. Ti ho aperto le impostazioni: nel riquadro Spotify c\'è scritto cosa fare, è una procedura da fare una volta sola.';
+    }
+    await say('Ti porto alla pagina di Spotify, Signore: dai il permesso e torno subito.');
+    try { sessionStorage.setItem('jarvis.resume', 'spotify'); } catch { /* ignore */ } // al ritorno mi riaccendo da solo
+    await spotify.connect();
+    return '';
+  }
+
   // taratura del microfono sulla voce del Signore
   if (/^(tara(mi)?|tarati|calibra|calibrati|fai la taratura|rifai la taratura)( (il|sul) microfono| la voce| sulla mia voce| il microfono sulla mia voce)?$|^taratura( del)? microfono$|^taratura$/.test(t)) {
     return calibrate();
@@ -574,6 +587,7 @@ function handle(text) {
 
     // prima i comandi istantanei
     const quick = await quickCommand(text).catch(() => null);
+    if (quick === '') return; // comando eseguito senza nulla da dire (sta cambiando pagina)
     if (quick) {
       brain.note(text, quick);
       await say(quick);
@@ -925,6 +939,7 @@ $('s-test').addEventListener('click', () => {
 });
 
 $('s-spotify-connect').addEventListener('click', async () => {
+  if (!spotify.isConnected()) { try { if (state.mode !== 'off') sessionStorage.setItem('jarvis.resume', 'spotify'); } catch { /* ignore */ } }
   if (spotify.isConnected()) {
     spotify.disconnect();
     openSettings();
@@ -1033,7 +1048,10 @@ brain.extraContext = () => {
   const parts = [];
   if (b) parts.push(`batteria al ${Math.round(b.level * 100)} per cento, ${b.charging ? 'in carica' : 'non in carica'}`);
   parts.push(navigator.onLine ? 'connesso a internet' : 'senza connessione');
-  return `Il tuo corpo (il tablet): ${parts.join(', ')}.`;
+  const sp = spotify.isConnected()
+    ? 'Spotify: COLLEGATO, lo comandi direttamente.'
+    : `Spotify: NON collegato su questo dispositivo${getSettings().spotifyClientId ? ' (il Client ID c\'è già: basta che il Signore dica «Jarvis, collega Spotify» e dia il permesso)' : ' (manca il Client ID: serve la procedura nelle impostazioni, una volta sola)'}.`;
+  return `Il tuo corpo (il tablet): ${parts.join(', ')}.\n- ${sp}`;
 };
 window.addEventListener('online', () => { if (state.mode !== 'off') { refreshWeather(); } });
 
@@ -1266,7 +1284,8 @@ async function boot(auto) {
   await new Promise((r) => setTimeout(r, auto ? 400 : 1400));
   state.busy = true;
   try {
-    const hello = auto ? `Mi sono aggiornato alla versione ${JARVIS_VERSION}, Signore.`
+    const hello = auto === 'spotify' ? 'Rieccomi, Signore.'
+      : auto ? `Mi sono aggiornato alla versione ${JARVIS_VERSION}, Signore.`
       : getSettings().geminiKey ? greeting() : 'Sistemi online, Signore. Mi manca solo il cervello: incolla la chiave Gemini nelle impostazioni.';
     await say(hello);
     if (noMic) await say(noMic); // lo dice anche a voce: è il motivo per cui "non sente"
@@ -1318,7 +1337,11 @@ function offerChrome() {
 
   const sp = await spotify.handleRedirect().catch((e) => ({ ok: false, error: e.message }));
   if (sp && !sp.ok) showJarvis(`Il collegamento con Spotify non è riuscito: ${sp.error}`);
-  if (sp && sp.ok) showJarvis('Spotify collegato, Signore. Tocca ATTIVA e chiedimi un po\' di musica.');
+  if (sp && sp.ok) {
+    showJarvis('Spotify collegato, Signore. Tocca ATTIVA e chiedimi un po\' di musica.');
+    $('boot-hint').textContent = 'Spotify collegato. Tocca ATTIVA e chiedimi un po\' di musica.';
+    state.queue.push('Spotify è collegato, Signore. Da adesso la musica la comando io: prova a dirmi cosa vuoi sentire.');
+  }
   // riaccensione automatica dopo un aggiornamento
   let resume = '';
   try { resume = sessionStorage.getItem('jarvis.resume') || ''; sessionStorage.removeItem('jarvis.resume'); } catch { /* ignore */ }

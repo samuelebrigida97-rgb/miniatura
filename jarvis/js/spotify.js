@@ -78,7 +78,7 @@ export const spotify = {
 
   async _token() {
     const t = store.get('spotifyToken', null);
-    if (!t) throw new Error('Spotify non è collegato. Collegalo dalle impostazioni.');
+    if (!t) throw new Error('Spotify non è ancora collegato su questo dispositivo: il Signore deve dire «Jarvis, collega Spotify» (o toccare Collega Spotify nelle impostazioni) una volta sola.');
     if (Date.now() < t.expires) return t.access;
     const res = await fetch(TOKEN, {
       method: 'POST',

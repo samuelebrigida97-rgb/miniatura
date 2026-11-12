@@ -1,12 +1,13 @@
 // Udito (riconoscimento vocale) e voce (sintesi) usando le API del browser: gratis, niente server.
 import { getSettings } from './store.js';
+import { IOS, ANDROID, MOBILE } from './platform.js';
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-// Su Android il riconoscimento "continuo" di Chrome ripete e accumula le frasi:
+// Sui dispositivi mobili il riconoscimento "continuo" ripete e accumula le frasi:
 // lì si usano sessioni brevi (una frase per volta) che ripartono da sole.
-// Lo stesso vale per iPhone e iPad, dove il riconoscimento continuo è instabile.
-const ANDROID = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+// Safari su iPhone/iPad in più segna come "definitive" frasi ancora a metà: per lui
+// la frase si considera finita solo dopo una pausa o a fine sessione.
 
 export class Ears {
   constructor({ onFinal, onInterim, onError, onActive }) {
@@ -18,33 +19,54 @@ export class Ears {
     this.running = false;
     this.supported = !!SR;
     this.fatal = false;
+    this.needsTap = false;   // Safari a volte vuole un tocco per riaccendere il microfono
+    this.everWorked = false;
     this.sessionText = '';
     this.failures = 0;
   }
 
   _flush() {
+    clearTimeout(this._quiet);
     const t = this.sessionText.trim();
     this.sessionText = '';
     if (t) this.onFinal(t);
   }
 
+  // Unisce i pezzi di una sessione; se un pezzo è solo la versione più lunga del precedente, lo sostituisce.
+  _sessionTranscript(results) {
+    const parts = [];
+    for (let i = 0; i < results.length; i++) {
+      const t = (results[i][0].transcript || '').trim();
+      if (!t) continue;
+      const last = parts[parts.length - 1];
+      if (last && t.toLowerCase().startsWith(last.toLowerCase())) parts[parts.length - 1] = t;
+      else if (last && last.toLowerCase().startsWith(t.toLowerCase())) continue;
+      else parts.push(t);
+    }
+    return parts.join(' ');
+  }
+
   _create() {
     const rec = new SR();
     rec.lang = 'it-IT';
-    rec.continuous = !ANDROID;
+    rec.continuous = !MOBILE;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
-    rec.onstart = () => { this.running = true; this.onActive(true); };
+    rec.onstart = () => { this.running = true; this.everWorked = true; this.needsTap = false; this.onActive(true); };
     rec.onresult = (ev) => {
       this.failures = 0;
-      if (ANDROID) {
-        // una sessione = una frase: si tiene sempre la trascrizione più recente e completa
-        let text = '';
-        for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
+      if (MOBILE) {
+        const text = this._sessionTranscript(ev.results);
         this.sessionText = text;
         const last = ev.results[ev.results.length - 1];
-        if (last && last.isFinal) this._flush();
-        else if (text.trim()) this.onInterim(text.trim());
+        if (text) this.onInterim(text);
+        if (ANDROID && last && last.isFinal) { this._flush(); return; }
+        // Safari: la frase è finita quando smette di cambiare per un po'
+        clearTimeout(this._quiet);
+        this._quiet = setTimeout(() => {
+          this._flush();
+          try { rec.stop(); } catch { /* ignore */ } // chiude la sessione: ne ripartirà una pulita
+        }, IOS ? 1400 : 4000);
         return;
       }
       let interim = '';
@@ -61,9 +83,16 @@ export class Ears {
     };
     rec.onerror = (ev) => {
       if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-        this.fatal = true;
-        this.wanted = false;
-        this.onError('microfono-negato');
+        if (IOS && this.everWorked) {
+          // il permesso c'è, ma Safari vuole un tocco per riaprire il microfono
+          this.needsTap = true;
+          this.wanted = false;
+          this.onError('serve-un-tocco');
+        } else {
+          this.fatal = true;
+          this.wanted = false;
+          this.onError('microfono-negato');
+        }
       } else if (ev.error === 'audio-capture') {
         this.failures++;
         this.onError('microfono-occupato');
@@ -77,12 +106,12 @@ export class Ears {
       this.running = false;
       if (this._onStopped) this._onStopped();
       if (this.wanted) this._flush(); // frase rimasta in sospeso a fine sessione
-      else this.sessionText = '';
+      else { clearTimeout(this._quiet); this.sessionText = ''; }
       this.onActive(false);
       if (this.wanted && !this.fatal) {
         clearTimeout(this._restart);
         // se continua a fallire (rete assente, microfono occupato) rallenta invece di martellare
-        const wait = Math.min(250 + this.failures * 1500, 8000);
+        const wait = Math.min((IOS ? 400 : 250) + this.failures * 1500, 8000);
         this._restart = setTimeout(() => this._start(), wait);
       }
     };
@@ -94,7 +123,13 @@ export class Ears {
     try {
       if (!this.rec) this.rec = this._create();
       this.rec.start();
-    } catch {
+    } catch (e) {
+      if (IOS && e && e.name === 'NotAllowedError' && this.everWorked) {
+        this.needsTap = true;
+        this.wanted = false;
+        this.onError('serve-un-tocco');
+        return;
+      }
       // "already started" o simili: ritenta tra poco
       clearTimeout(this._restart);
       this._restart = setTimeout(() => this._start(), 600);
@@ -109,11 +144,12 @@ export class Ears {
   }
 
   // Spegne l'ascolto. La promessa si chiude quando il microfono è davvero libero:
-  // su Android, finché non lo è, l'audio della voce esce muto o tagliato.
+  // sui dispositivi mobili, finché non lo è, l'audio della voce esce muto o tagliato.
   stop() {
     this.wanted = false;
     this.sessionText = '';
     clearTimeout(this._restart);
+    clearTimeout(this._quiet);
     if (!this.rec || !this.running) return Promise.resolve();
     return new Promise((resolve) => {
       const done = () => { clearTimeout(timer); this._onStopped = null; resolve(); };
@@ -167,6 +203,9 @@ export class Mouth {
     return (
       it.find((v) => v.name === voiceName) ||
       it.find((v) => /google/i.test(v.name)) ||
+      // Apple: prima le voci "migliorate/premium", poi quelle maschili note, poi Alice
+      it.find((v) => /premium|enhanced|migliorata|siri/i.test(v.name)) ||
+      it.find((v) => /luca|rocko|eddy|reed|grandpa/i.test(v.name)) ||
       it[0] ||
       null
     );

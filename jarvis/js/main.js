@@ -6,6 +6,7 @@ import { Brain, BrainError, logError } from './brain.js';
 import { createHandlers, bindBrain, reminders, getWeather, weatherText, locate, knownLocation } from './tools.js';
 import { spotify, redirectUri } from './spotify.js';
 import { seedMemories } from './seed.js';
+import { IOS, IOS_OTHER_BROWSER, STANDALONE, deviceName } from './platform.js';
 
 seedMemories();
 
@@ -26,7 +27,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '2.4';
+const JARVIS_VERSION = '3.0';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -179,7 +180,11 @@ const mouth = new Mouth({
 });
 mouth.onProblem = (text) => { logError(`voce: ${text}`); sys('sys-voice', true, true); };
 // il primo tocco sullo schermo sblocca la voce (necessario su iPhone)
-document.addEventListener('pointerdown', () => mouth.unlock(), { capture: true });
+document.addEventListener('pointerdown', () => {
+  mouth.unlock();
+  // se lo schermo non è ancora "sempre acceso" (per esempio dopo un rifiuto momentaneo), riprova a ogni tocco
+  if (state.mode !== 'off' && !/^attivo/.test(screenAwake)) keepAwake();
+}, { capture: true });
 
 // Ascolto paziente: i pezzi di frase vengono accumulati e spediti solo dopo una pausa vera,
 // così il Signore può ragionare ad alta voce senza essere interrotto.
@@ -223,7 +228,13 @@ const ears = new Ears({
     logError(`udito: ${kind}`);
     if (kind === 'microfono-negato') {
       sys('sys-ears', false);
-      showJarvis('Non ho il permesso di usare il microfono, Signore. Consentilo nelle impostazioni del browser e ricarica la pagina.');
+      showJarvis(IOS
+        ? 'Non ho il permesso di usare il microfono, Signore. Vai in Impostazioni, Safari, Microfono e scegli Consenti; controlla anche che Siri e Dettatura siano attivi. Poi ricarica la pagina.'
+        : 'Non ho il permesso di usare il microfono, Signore. Consentilo nelle impostazioni del browser e ricarica la pagina.');
+    } else if (kind === 'serve-un-tocco') {
+      // Safari non lascia riaccendere il microfono da solo: basta un tocco
+      needTapUI();
+      sys('sys-ears', true, true);
     } else {
       sys('sys-ears', true, true); // giallo: microfono occupato da un'altra app, o riconoscimento senza rete
     }
@@ -258,7 +269,22 @@ function listenAgain() {
   if (state.mode === 'off') return;
   if (state.rest) { setMode('sleep'); return; } // di notte non ascolta
   setMode(state.conversation ? 'listening' : 'sleep');
+  if (ears.needsTap) { needTapUI(); return; } // Safari: aspetta il tocco
   ears.start();
+}
+
+function needTapUI() {
+  $('btn-talk').hidden = false;
+  if (state.mode === 'listening' || state.mode === 'sleep') $('status').textContent = 'MICROFONO IN PAUSA';
+}
+
+// Tocco per parlare (serve su iPhone/iPad quando Safari non riaccende il microfono da solo).
+function talkFromTap() {
+  $('btn-talk').hidden = true;
+  ears.needsTap = false;
+  ears.start(); // dentro il tocco
+  if (!state.conversation) startConversation();
+  setMode('listening');
 }
 
 // ---------- modalità notte ----------
@@ -268,6 +294,7 @@ function enterRest() {
   state.rest = true;
   state.restAfterReply = false;
   ears.stop();
+  $('btn-talk').hidden = true;
   $('rest').hidden = false;
   setMode('sleep');
 }
@@ -434,9 +461,21 @@ function refreshBoard() {
 
 // ---------- promemoria ----------
 
+// Un solo "altoparlante" per i suoni, creato dentro il tocco su ATTIVA:
+// su iPhone e iPad un suono creato più tardi resterebbe muto.
+let audioCtx = null;
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch { /* ignore */ }
+}
+
 function beep() {
   try {
-    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    unlockAudio();
+    const ac = audioCtx;
+    if (!ac) return;
     [0, 0.25, 0.5].forEach((t) => {
       const o = ac.createOscillator();
       const g = ac.createGain();
@@ -448,7 +487,6 @@ function beep() {
       o.start(ac.currentTime + t);
       o.stop(ac.currentTime + t + 0.22);
     });
-    setTimeout(() => ac.close(), 1200);
   } catch { /* ignore */ }
 }
 
@@ -486,11 +524,14 @@ $('core').addEventListener('click', (ev) => {
     mouth.cancel(); // interrompe Jarvis mentre parla
     return;
   }
-  if (!state.conversation && !state.busy) {
+  if (state.busy) return;
+  if (ears.needsTap || IOS) { talkFromTap(); return; } // Apple: niente frase di cortesia, si ascolta subito
+  if (!state.conversation) {
     startConversation();
     run(async () => { await say(pick(ACKS)); });
   }
 });
+$('btn-talk').addEventListener('click', () => { if (!state.busy && state.mode !== 'off') talkFromTap(); });
 
 $('btn-rest').addEventListener('click', () => { if (state.mode !== 'off' && !state.busy) enterRest(); });
 $('rest').addEventListener('click', exitRest);
@@ -559,7 +600,8 @@ function fillDiag() {
     `Modello in uso: ${brain.lastModel || (m ? brain.chain()[0] : 'non ancora scelto')}`,
     `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why}, fino alle ${new Date(v.until).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`).join('; ') || 'nessuno'}`,
     `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
-    `Udito: ${ears.supported ? 'supportato' : 'NON supportato'} · Voci italiane: ${mouth.italianVoices().length}`,
+    `Dispositivo: ${deviceName()}${STANDALONE ? ', aperto dall\'icona' : ', aperto nel browser'} · Schermo sempre acceso: ${screenAwake}`,
+    `Udito: ${ears.supported ? 'supportato' : 'NON supportato'}${ears.needsTap ? ' (serve un tocco per parlare)' : ''} · Voci italiane: ${mouth.italianVoices().length}`,
     `Voce: ${!window.speechSynthesis ? 'NON disponibile in questo browser' : mouth.lastProblem ? `PROBLEMA: ${mouth.lastProblem}` : 'nessun problema rilevato'}`,
     `Memoria: ${brain.remembered()} scambi ricordati parola per parola${brain.summary ? ' + riassunto dei precedenti' : ''}, ${store.get('memories', []).length} ricordi su di te, ${store.get('diary', []).length} pagine di diario · ${storagePersistent === true ? 'protetta' : storagePersistent === false ? 'non ancora garantita da Chrome: per proteggerla installa Jarvis sulla schermata Home' : 'protezione non verificabile'}`,
     `Posizione: ${geo ? `${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'GPS' : geo.source === 'manuale' ? 'scritta a mano' : 'stimata dalla rete'})` : 'non ancora rilevata'}`,
@@ -728,19 +770,140 @@ brain.extraContext = () => {
 };
 window.addEventListener('online', () => { if (state.mode !== 'off') { refreshWeather(); } });
 
+// ---------- sempre aggiornato ----------
+// All'apertura Jarvis carica sempre l'ultima versione. Se resta acceso per giorni,
+// controlla ogni mezz'ora: quando ne esce una nuova lo dice e basta un tocco per installarla.
+
+let updateAnnounced = false;
+async function checkForUpdate() {
+  try {
+    const r = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) return;
+    const { version } = await r.json();
+    if (!version || version === JARVIS_VERSION) return 'aggiornato';
+    if (state.mode === 'off') { location.reload(); return 'ricarico'; } // spento: si aggiorna da solo
+    $('btn-update').hidden = false;
+    $('btn-update').textContent = `AGGIORNAMENTO ${version} PRONTO · TOCCA`;
+    if (!updateAnnounced && !state.rest) {
+      updateAnnounced = true;
+      state.queue.push('Signore, è pronto un mio aggiornamento. Tocca la scritta in alto quando vuoi installarlo.');
+      if (!state.busy) run(async () => {});
+    }
+    return version;
+  } catch {
+    return 'errore'; // senza rete riproverà
+  }
+}
+$('btn-update').addEventListener('click', () => location.reload());
+$('s-update').addEventListener('click', async () => {
+  $('s-test-result').textContent = 'Controllo…';
+  const r = await checkForUpdate();
+  $('s-test-result').textContent = r === 'aggiornato' ? `Sei già all'ultima versione (${JARVIS_VERSION}).`
+    : r === 'errore' ? 'Non riesco a controllare: manca la rete?'
+      : `È uscita la versione ${r}: chiudi questa finestra e tocca la scritta dorata in alto per installarla.`;
+});
+
+// ---------- trasloco della memoria ----------
+
+function exportMemory() {
+  const s = getSettings();
+  const data = {
+    jarvis: 1,
+    memories: store.get('memories', []), diary: store.get('diary', []), lists: store.get('lists', {}),
+    boards: store.get('boards', {}), reminders: store.get('reminders', []), summary: brain.summary,
+    settings: { geminiKey: s.geminiKey, spotifyClientId: s.spotifyClientId, place: s.place, wakeWords: s.wakeWords },
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(data));
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return `JARVIS:${btoa(bin)}`;
+}
+
+function importMemory(code) {
+  const raw = code.trim().replace(/^JARVIS:/, '').replace(/\s+/g, '');
+  const bin = atob(raw);
+  const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+  if (!data || data.jarvis !== 1) throw new Error('codice non valido');
+  const uniq = (a) => [...new Set(a)];
+  store.set('memories', uniq([...store.get('memories', []), ...(data.memories || [])]).slice(-150));
+  const diary = [...store.get('diary', [])];
+  (data.diary || []).forEach((d) => { if (!diary.some((x) => x.text === d.text)) diary.push(d); });
+  store.set('diary', diary.slice(-40));
+  const lists = store.get('lists', {});
+  Object.entries(data.lists || {}).forEach(([k, v]) => { lists[k] = uniq([...(lists[k] || []), ...v]); });
+  store.set('lists', lists);
+  const boards = store.get('boards', {});
+  Object.entries(data.boards || {}).forEach(([k, v]) => { boards[k] = uniq([...(boards[k] || []), ...v]); });
+  store.set('boards', boards);
+  const rem = store.get('reminders', []);
+  (data.reminders || []).forEach((r) => { if (!rem.some((x) => x.text === r.text && x.due === r.due)) rem.push(r); });
+  store.set('reminders', rem.sort((a, b) => a.due - b.due));
+  if (data.summary && !brain.summary) { brain.summary = data.summary; brain.persist(); }
+  const cur = getSettings();
+  const inc = data.settings || {};
+  saveSettings({
+    geminiKey: cur.geminiKey || inc.geminiKey || '', spotifyClientId: cur.spotifyClientId || inc.spotifyClientId || '',
+    place: cur.place || inc.place || '', wakeWords: cur.wakeWords || inc.wakeWords || '',
+  });
+  return { ricordi: (data.memories || []).length, diario: (data.diary || []).length };
+}
+
+$('s-export').addEventListener('click', async () => {
+  const code = exportMemory();
+  $('s-transfer').value = code;
+  try {
+    await navigator.clipboard.writeText(code);
+    $('s-transfer-msg').textContent = 'Copiato. Incollalo nel Jarvis dell\'altro dispositivo, in questo stesso riquadro, e premi Importa.';
+  } catch {
+    $('s-transfer').select();
+    $('s-transfer-msg').textContent = 'Seleziona tutto il testo qui sopra, copialo e incollalo nel Jarvis dell\'altro dispositivo.';
+  }
+});
+
+$('s-import').addEventListener('click', () => {
+  try {
+    const r = importMemory($('s-transfer').value);
+    $('s-transfer').value = '';
+    $('s-transfer-msg').textContent = `Importato: ${r.ricordi} ricordi e ${r.diario} pagine di diario uniti a quelli già presenti.`;
+    openSettings();
+    refreshReminders();
+    sys('sys-brain', !!getSettings().geminiKey);
+  } catch {
+    $('s-transfer-msg').textContent = 'Il codice non è valido o è incompleto: copialo di nuovo per intero.';
+  }
+});
+
 // ---------- avvio ----------
 
 let storagePersistent = null;
 try { navigator.storage?.persisted?.().then((ok) => { storagePersistent = ok; }); } catch { /* ignore */ }
 
 let wakeLock = null;
+let noSleep = null;
+// Dove il blocco schermo "ufficiale" manca (iPhone e iPad meno recenti) si usa NoSleep,
+// una piccola libreria che tiene sveglio lo schermo. Va caricata prima del tocco su ATTIVA.
+if (!('wakeLock' in navigator)) {
+  const sc = document.createElement('script');
+  sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js';
+  sc.onload = () => { try { noSleep = new window.NoSleep(); } catch { /* ignore */ } };
+  document.head.append(sc);
+}
 async function keepAwake() {
   try {
     if ('wakeLock' in navigator) {
       wakeLock = await navigator.wakeLock.request('screen');
+      screenAwake = 'attivo';
+    } else if (noSleep) {
+      await noSleep.enable();
+      screenAwake = 'attivo (riserva)';
+    } else {
+      screenAwake = 'non disponibile: imposta il blocco automatico su Mai';
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    screenAwake = `non riuscito (${e && e.name ? e.name : 'errore'})`;
+  }
 }
+let screenAwake = 'non ancora richiesto';
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && state.mode !== 'off') {
     keepAwake();
@@ -765,6 +928,9 @@ function greeting() {
 
 async function boot() {
   mouth.unlock(); // subito, dentro il tocco
+  unlockAudio();
+  keepAwake(); // anche questo dentro il tocco: la riserva per Apple parte solo così
+  if (ears.supported && IOS) { try { ears.start(); } catch { /* ignore */ } } // Safari chiede il microfono solo dentro un tocco
   $('boot').classList.add('gone');
   try { await document.documentElement.requestFullscreen?.(); } catch { /* ignore */ }
   keepAwake();
@@ -776,10 +942,13 @@ async function boot() {
   if (getSettings().geminiKey) brain.warmup().then(() => sys('sys-brain', true)).catch(() => sys('sys-brain', false, true));
 
   if (!ears.supported) {
-    const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    showJarvis(ios
-      ? 'Su iPhone posso ascoltarti solo se mi apri con Safari, Signore. Qui puoi comunque scrivermi con la tastiera.'
-      : 'Questo browser non mi lascia usare il microfono, Signore: aprimi con Google Chrome. Intanto puoi scrivermi con la tastiera.');
+    showJarvis(IOS_OTHER_BROWSER
+      ? 'Su iPhone e iPad posso ascoltarti solo con Safari, Signore: aprimi lì. Qui puoi comunque scrivermi con la tastiera.'
+      : IOS && STANDALONE
+        ? 'Aperto dall\'icona questo dispositivo non mi dà il microfono, Signore: aprimi da Safari per parlarmi. Qui puoi scrivermi con la tastiera.'
+        : IOS
+          ? 'Non riesco ad accedere al microfono, Signore. Controlla in Impostazioni che Siri e Dettatura siano attivi. Intanto puoi scrivermi con la tastiera.'
+          : 'Questo browser non mi lascia usare il microfono, Signore: aprimi con Google Chrome. Intanto puoi scrivermi con la tastiera.');
   }
 
   // chiede la posizione adesso, dentro il tocco: così Chrome mostra la richiesta di permesso
@@ -811,6 +980,7 @@ $('btn-boot').addEventListener('click', boot);
   setInterval(checkReminders, 1000);
   setInterval(refreshWeather, 15 * 60 * 1000);
   setInterval(refreshMusic, 30 * 1000);
+  setInterval(checkForUpdate, 30 * 60 * 1000);
   refreshReminders();
   if (knownLocation() || getSettings().place) refreshWeather(); // altrimenti aspetta il tocco su ATTIVA
   refreshBoard();
@@ -828,6 +998,9 @@ $('btn-boot').addEventListener('click', boot);
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (hadController && state.mode === 'off') location.reload();
     });
-    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => reg.update()).catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+      reg.update();
+      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+    }).catch(() => {});
   }
 })();

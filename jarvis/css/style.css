@@ -12,6 +12,11 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html, body {
+  /* niente zoom col doppio tocco, niente rimbalzo della pagina su iPhone e iPad */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  -webkit-text-size-adjust: 100%;
   margin: 0;
   height: 100%;
   background: var(--bg);
@@ -25,7 +30,7 @@ html, body {
   position: fixed;
   inset: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100%;
   display: block;
 }
 
@@ -204,6 +209,25 @@ button {
 .board-ideas li::marker { color: var(--cyan); }
 .board-ideas .empty { list-style: none; margin-left: -16px; color: var(--cyan-dim); }
 
+/* nei campi di testo si deve poter scrivere e selezionare (su iPhone altrimenti restano bloccati) */
+input, textarea, select, .settings, .diag { -webkit-user-select: text; user-select: text; }
+
+/* ---- avvisi toccabili ---- */
+.update, .talk {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  pointer-events: auto; cursor: pointer; white-space: nowrap;
+  padding: 12px 18px; font-size: 12px; letter-spacing: 0.18em;
+}
+.update { top: 46px; border: 1px solid var(--gold); color: var(--gold); background: rgba(40, 30, 0, 0.6); }
+.talk {
+  bottom: 150px; border: 1px solid var(--cyan); color: #fff; background: rgba(0, 90, 150, 0.55);
+  box-shadow: 0 0 24px rgba(70, 200, 255, 0.45); font-size: 14px; padding: 16px 24px;
+}
+.settings textarea {
+  background: #000c14; border: 1px solid var(--cyan-faint); color: var(--text);
+  font: 12px/1.4 monospace; padding: 8px 10px; width: 100%; resize: vertical; word-break: break-all;
+}
+
 /* ---- modalità notte ---- */
 .rest { position: fixed; inset: 0; z-index: 9; background: #000; display: grid; place-items: center; cursor: pointer; }
 .rest-inner { text-align: center; }
@@ -252,6 +276,7 @@ dialog {
   padding: 0;
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
 }
 dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
 .settings { padding: 18px; display: flex; flex-direction: column; gap: 14px; user-select: text; }
@@ -285,6 +310,8 @@ code { font-size: 13px; color: var(--gold); word-break: break-all; }
   .buttons { top: auto; bottom: 16px; right: 16px; flex-direction: row; }
   .subs { width: calc(100vw - 32px); min-width: 0; bottom: 76px; }
   .title { display: none; }
+  .update { top: 104px; }
+  .talk { bottom: 200px; }
   .thoughts { width: calc(100vw - 32px); }
   .ml { top: 100px; left: 16px; right: 16px; width: auto; min-width: 0; }
   .board-ideas li:nth-last-child(n+4) { display: none; }

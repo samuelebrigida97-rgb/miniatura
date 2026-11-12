@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#01060b">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>J.A.R.V.I.S.</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -55,6 +60,8 @@
     <div id="thoughts" class="thoughts"></div>
 
     <div class="title">J.A.R.V.I.S.</div>
+    <button id="btn-update" class="update" hidden>AGGIORNAMENTO PRONTO · TOCCA</button>
+    <button id="btn-talk" class="talk" hidden>TOCCA PER PARLARE</button>
     <div id="status" class="status">SISTEMI OFFLINE</div>
 
     <div class="subs">
@@ -152,9 +159,21 @@
       </fieldset>
 
       <fieldset>
+        <legend>Porta la memoria su un altro dispositivo</legend>
+        <p class="help">Ogni dispositivo ha la sua memoria. Per portare ricordi, diario, liste, promemoria e chiavi su un altro: qui premi Copia, apri Jarvis sull'altro dispositivo, incolla nel riquadro e premi Importa.</p>
+        <textarea id="s-transfer" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Il codice comparirà qui, oppure incollalo qui"></textarea>
+        <div class="row">
+          <button type="button" id="s-export" class="small">Copia memoria</button>
+          <button type="button" id="s-import" class="small ghost">Importa</button>
+        </div>
+        <div id="s-transfer-msg" class="help"></div>
+      </fieldset>
+
+      <fieldset>
         <legend>Diagnostica</legend>
         <div class="row">
           <button type="button" id="s-test-brain" class="small">Prova il cervello</button>
+          <button type="button" id="s-update" class="small ghost">Cerca aggiornamenti</button>
           <button type="button" id="s-clear-errors" class="small ghost">Pulisci errori</button>
         </div>
         <div id="s-test-result" class="help"></div>

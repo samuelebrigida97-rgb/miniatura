@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.4';
+const JARVIS_VERSION = '3.5';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -597,6 +597,8 @@ function errorMessage(e) {
     case 'quota': return e.daily
       ? 'Ho finito tutte le richieste gratuite di oggi, Signore. Google me ne ridà domani.'
       : 'Sto facendo troppe richieste al minuto per il piano gratuito, Signore. Dammi qualche secondo e riprova.';
+    case 'busy': return 'I server gratuiti di Google sono intasati in questo momento, Signore: non è colpa tua né mia. Riprova tra un minuto.';
+    case 'model': return 'I modelli che potevo usare non sono più disponibili per questa chiave, Signore. Tocca «Prova il cervello» nelle impostazioni.';
     case 'timeout': return 'Il mio cervello remoto non risponde in questo momento, Signore. Riprova tra poco.';
     case 'overloaded': return 'I server di Google sono sovraccarichi, Signore. Riprova tra poco.';
     case 'network': return 'Non riesco a raggiungere la rete, Signore. Controlla il Wi-Fi.';
@@ -799,7 +801,7 @@ function fillDiag() {
   $('s-diag').textContent = [
     `Versione: ${JARVIS_VERSION}`,
     `Chiave Gemini: ${getSettings().geminiKey ? 'presente' : 'assente'}`,
-    `Modello in uso: ${brain.lastModel || (m ? brain.chain()[0] : 'non ancora scelto')}`,
+    `Modello in uso: ${brain.lastModel || (m ? brain.chain()[0] : 'non ancora scelto')} · prossimi in fila: ${m ? brain.chain().slice(0, 4).join(', ') : '-'}`,
     `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why}, fino alle ${new Date(v.until).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`).join('; ') || 'nessuno'}`,
     `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
     `Browser: ${SAMSUNG_BROWSER ? 'Samsung Internet (NON dà il microfono: usa Chrome)' : /Firefox|FxiOS/i.test(navigator.userAgent) ? 'Firefox (non dà il microfono)' : /Edg/i.test(navigator.userAgent) ? 'Edge' : /CriOS|Chrome/i.test(navigator.userAgent) ? 'Chrome' : /Safari/i.test(navigator.userAgent) ? 'Safari' : 'altro'}`,

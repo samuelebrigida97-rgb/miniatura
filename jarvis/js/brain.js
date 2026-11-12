@@ -8,14 +8,17 @@ const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_FAST = 'gemini-flash-latest';
 const DEFAULT_DEEP = 'gemini-pro-latest';
 const COMPACT_AT = 70;       // oltre questo numero di messaggi, i più vecchi vengono riassunti
-const KEEP_RECENT = 30;      // messaggi recenti tenuti parola per parola
+const KEEP_RECENT = 30;
+const HEDGE_MS = 3000;            // dopo quanto un modello muto viene affiancato da un altro
+const HEDGE_NEXT_MS = 1500;       // e dopo quanto dai successivi, se tacciono anche loro
+const STICKY_MS = 20 * 60 * 1000; // per quanto il modello che ha appena funzionato resta il preferito      // messaggi recenti tenuti parola per parola
 
 export class BrainError extends Error {
   constructor(kind, message) {
     super(message || kind);
     this.kind = kind;
     // per la quota basta sapere quale modello e quale limite, non tutto il messaggio di Google
-    if (kind === 'cancelled') return; // interruzione voluta, non un errore
+    if (kind === 'cancelled' || kind === 'lost') return; // interruzione voluta o gara persa: non sono errori
     const quota = kind === 'quota' && (message || '').match(/limit: \d+, model: [\w.-]+/);
     logError(`${kind}: ${quota ? `${quota[0]}${/per day/i.test(message) ? ' (al giorno)' : ''}` : (message || '').slice(0, 300)}`);
   }
@@ -146,6 +149,8 @@ const QUICK_CONFIRM = {
 export class Brain {
   constructor(handlers) {
     this.handlers = handlers;
+    this._ctls = new Set();      // richieste in corso (per poterle fermare)
+    this._cancelers = new Set();
     const saved = store.get('chat', null);
     this.history = saved?.history || [];
     this.summary = saved?.summary || '';
@@ -246,8 +251,8 @@ export class Brain {
     let ms = 0;
     let why = e.kind;
     if (e.kind === 'quota') { ms = Math.min(Math.max(e.retryMs || 60000, 20000), 24 * 3600 * 1000); why = e.daily ? 'quota del giorno finita' : 'troppe richieste al minuto'; }
-    else if (e.kind === 'timeout') { ms = 45 * 60 * 1000; why = 'non risponde'; }
-    else if (e.kind === 'overloaded') { ms = 3 * 60 * 1000; why = 'sovraccarico'; }
+    else if (e.kind === 'timeout') { ms = 20 * 60 * 1000; why = 'non risponde'; }
+    else if (e.kind === 'overloaded') { ms = 8 * 60 * 1000; why = 'sovraccarico'; }
     else if (e.kind === 'model') { ms = 24 * 3600 * 1000; why = 'non disponibile'; }
     if (!ms) return;
     const c = this.cooldowns();
@@ -257,11 +262,11 @@ export class Brain {
 
   // ---------- chiamate ----------
 
-  async fetchJSON(url, body, timeoutMs = 20000) {
+  async fetchJSON(url, body, timeoutMs = 20000, ctl = new AbortController()) {
     let res;
-    const ctl = new AbortController();
-    this._fetchCtl = ctl;
-    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    this._ctls.add(ctl);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs);
     try {
       res = await fetch(url, {
         method: 'POST',
@@ -270,14 +275,17 @@ export class Brain {
         signal: ctl.signal,
       });
     } catch (e) {
+      this._ctls.delete(ctl);
       if (e instanceof BrainError) throw e;
       if (this.cancelFlag) throw new BrainError('cancelled');
-      if (ctl.signal.aborted) throw new BrainError('timeout', url.replace(/.*models\//, ''));
+      if (timedOut) throw new BrainError('timeout', url.replace(/.*models\//, ''));
+      if (ctl.signal.aborted) throw new BrainError('lost'); // un altro modello ha risposto prima
       throw new BrainError('network', String(e));
     } finally {
       clearTimeout(timer);
     }
     if (res.ok) return res;
+    this._ctls.delete(ctl);
     const text = await res.text();
     if (res.status === 429) {
       const e = new BrainError('quota', text);
@@ -290,19 +298,22 @@ export class Brain {
     if (res.status === 400 && /API key|API_KEY/i.test(text)) throw new BrainError('bad-key', text);
     if (res.status === 400 && /thinking/i.test(text)) throw new BrainError('no-thinking', text);
     if (res.status === 403) throw new BrainError('bad-key', text);
-    if (res.status >= 500) throw new BrainError('overloaded', text);
+    if (res.status >= 500) throw new BrainError('overloaded', `${url.replace(/.*models\//, '').split(':')[0]}: sovraccarico`);
     throw new BrainError('http', `${res.status} ${text.slice(0, 300)}`);
   }
 
-  // Chiamata in streaming: i pensieri arrivano mentre il modello ragiona.
-  async streamCall(model, body, onThought, firstMs = 14000, onText) {
-    const res = await this.fetchJSON(`${BASE}/models/${model}:streamGenerateContent?alt=sse`, body, firstMs);
+  // Chiamata in streaming: i pensieri e il testo arrivano mentre il modello ragiona.
+  // claim() serve quando più modelli corrono in parallelo: il primo che produce qualcosa vince,
+  // gli altri si fermano senza aver detto nulla.
+  async streamCall(model, body, { onThought, onText, firstMs = 9000, claim, ctl = new AbortController() } = {}) {
+    const res = await this.fetchJSON(`${BASE}/models/${model}:streamGenerateContent?alt=sse`, body, firstMs, ctl);
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = '';
     const chunks = [];
     let blocked = false;
     let emitted = false; // true se parte della risposta è già stata detta a voce
+    let won = !claim;
     const fail = (e) => { e.spoken = emitted; return e; };
     const handleLine = (line) => {
       if (!line.startsWith('data:')) return;
@@ -313,46 +324,64 @@ export class Brain {
       if (d.promptFeedback?.blockReason) blocked = true;
       const cand = d.candidates?.[0];
       for (const p of cand?.content?.parts || []) {
+        if (!won) { won = claim(); if (!won) throw new BrainError('lost'); }
         chunks.push(p);
         if (p.thought && p.text) onThought?.(p.text);
         else if (!p.thought && typeof p.text === 'string' && p.text && !p.functionCall) { emitted = true; onText?.(p.text); }
       }
     };
     let first = true;
-    for (;;) {
-      let chunk;
-      // se il modello resta muto troppo a lungo, si passa al successivo
-      let timer;
-      const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(fail(new BrainError('timeout', model))), first ? firstMs : 40000); });
-      const stopped = new Promise((_, rej) => { this._onCancel = () => rej(new BrainError('cancelled')); });
-      try {
-        chunk = await Promise.race([reader.read(), limit, stopped]);
-      } catch (e) {
-        try { reader.cancel(); } catch { /* ignore */ }
-        if (e instanceof BrainError) throw fail(e);
-        throw fail(new BrainError('network', String(e)));
-      } finally {
-        clearTimeout(timer);
+    let cancelWaiter;
+    try {
+      for (;;) {
+        let chunk;
+        // se il modello resta muto troppo a lungo, si passa al successivo
+        let timer;
+        const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(new BrainError('timeout', model)), first ? firstMs : 40000); });
+        const stopped = new Promise((_, rej) => { cancelWaiter = () => rej(new BrainError('cancelled')); this._cancelers.add(cancelWaiter); });
+        stopped.catch(() => {}); // se nessuno la aspetta più, non deve fare rumore
+        try {
+          chunk = await Promise.race([reader.read(), limit, stopped]);
+        } catch (e) {
+          if (e instanceof BrainError) throw e;
+          if (this.cancelFlag) throw new BrainError('cancelled');
+          if (ctl.signal.aborted) throw new BrainError('lost');
+          throw new BrainError('network', String(e));
+        } finally {
+          clearTimeout(timer);
+          this._cancelers.delete(cancelWaiter);
+        }
+        first = false;
+        if (this.cancelFlag) throw new BrainError('cancelled');
+        const { done, value } = chunk;
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          handleLine(buf.slice(0, i).replace(/\r$/, ''));
+          buf = buf.slice(i + 1);
+        }
       }
-      first = false;
-      if (this.cancelFlag) { try { reader.cancel(); } catch { /* ignore */ } throw new BrainError('cancelled'); }
-      const { done, value } = chunk;
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        handleLine(buf.slice(0, i).replace(/\r$/, ''));
-        buf = buf.slice(i + 1);
-      }
+      if (buf) handleLine(buf);
+    } catch (e) {
+      try { reader.cancel(); } catch { /* ignore */ }
+      throw fail(e);
+    } finally {
+      this._ctls.delete(ctl);
     }
-    if (buf) handleLine(buf);
+    if (!chunks.length && !blocked) throw new BrainError('overloaded', `${model}: risposta vuota`);
     return { parts: assemble(chunks), blocked };
   }
 
-  async simpleCall(model, body, timeoutMs = 25000) {
-    const res = await this.fetchJSON(`${BASE}/models/${model}:generateContent`, body, timeoutMs);
-    const d = await res.json();
-    return assemble(d.candidates?.[0]?.content?.parts || []);
+  async simpleCall(model, body, timeoutMs = 15000) {
+    const ctl = new AbortController();
+    try {
+      const res = await this.fetchJSON(`${BASE}/models/${model}:generateContent`, body, timeoutMs, ctl);
+      const d = await res.json();
+      return assemble(d.candidates?.[0]?.content?.parts || []);
+    } finally {
+      this._ctls.delete(ctl);
+    }
   }
 
   // Catena di modelli da provare, dal migliore ai ripieghi, saltando quelli a riposo.
@@ -365,48 +394,131 @@ export class Brain {
     let list = [...(m.fastList || [])];
     if (!list.length) list = [m.fast, DEFAULT_FAST];
     list = list.filter((n) => n && !/omni/.test(n));
-    if (cheap) list = [...list.filter((n) => /lite/.test(n)), ...list.filter((n) => !/lite/.test(n))];
-    else if (deep && m.deep) list.unshift(m.deep);
-    list = [...new Set(list)];
     const cold = this.cooldowns();
+    if (cheap) {
+      list = [...list.filter((n) => /lite/.test(n)), ...list.filter((n) => !/lite/.test(n))];
+    } else {
+      // il modello che ha appena risposto bene resta in testa per un po': niente tentativi a vuoto sugli altri
+      const good = store.get('lastGood', null);
+      if (good && Date.now() - good.ts < STICKY_MS && list.includes(good.model) && !cold[good.model]) {
+        list = [good.model, ...list.filter((n) => n !== good.model)];
+      }
+      if (deep && m.deep) list.unshift(m.deep);
+    }
+    list = [...new Set(list)];
     const awake = list.filter((n) => !cold[n]);
     // se sono tutti a riposo si riprova comunque con quelli che si svegliano prima
     const order = awake.length ? awake : list.sort((a, b) => cold[a].until - cold[b].until);
-    return order.slice(0, 6);
+    return order.slice(0, 8);
   }
 
-  // Prova i modelli in catena: se uno è muto, sovraccarico, inesistente o fuori quota lo mette a riposo
-  // e passa al successivo.
+  // Tra tanti errori, quello che spiega meglio al Signore cosa sta succedendo.
+  summarize(errors) {
+    if (!errors.length) return new BrainError('http', 'nessun modello disponibile');
+    const kinds = errors.map((e) => e.kind);
+    if (kinds.includes('network') && kinds.every((k) => k === 'network')) return errors[0];
+    if (kinds.some((k) => k === 'overloaded' || k === 'timeout')) {
+      return new BrainError('busy', `modelli intasati o muti: ${kinds.join(', ')}`);
+    }
+    const daily = errors.find((e) => e.kind === 'quota' && e.daily);
+    if (daily) return daily;
+    return errors.find((e) => e.kind === 'quota') || errors[errors.length - 1];
+  }
+
+  // Una richiesta a un modello, con il ragionamento acceso (o spento se quel modello non lo supporta).
+  async attempt(model, body, { isDeep, stream, onThought, onText, claim, ctl }) {
+    let thinking = true;
+    for (;;) {
+      // ragionamento leggero nelle chiacchiere, profondo in brainstorming
+      const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true, thinkingLevel: isDeep ? 'high' : 'low' } } } : body;
+      try {
+        if (stream) return await this.streamCall(model, b, { onThought, onText, firstMs: isDeep ? 45000 : 9000, claim, ctl });
+        return { parts: await this.simpleCall(model, b) };
+      } catch (e) {
+        if (e.kind === 'no-thinking' && thinking) { thinking = false; continue; }
+        throw e;
+      }
+    }
+  }
+
+  // Chiede la risposta ai modelli della catena. Parte dal migliore; se entro pochi secondi non dà
+  // segni di vita ne parte un altro in parallelo, e vince il primo che comincia a rispondere.
+  // Chi è muto, intasato, inesistente o fuori quota va a riposo.
   async generate(body, { deep = false, cheap = false, onThought, onText, stream = true } = {}) {
     if (!store.get('models', null) && !getSettings().geminiModel) {
       try { await this.discoverModels(); } catch (e) { if (e.kind === 'bad-key') throw e; }
     }
     const chain = this.chain({ deep, cheap });
-    let lastError;
-    for (const model of chain) {
-      const isDeep = deep && model === this.models().deep;
-      let thinking = true;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        // ragionamento leggero nelle chiacchiere, profondo in brainstorming
-        const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true, thinkingLevel: isDeep ? 'high' : 'low' } } } : body;
+    const deepModel = this.models().deep;
+
+    if (!stream) { // lavori di servizio: uno alla volta, senza fretta
+      const errors = [];
+      for (const model of chain) {
         try {
-          const out = stream
-            ? await this.streamCall(model, b, onThought, isDeep ? 45000 : 9000, onText)
-            : { parts: await this.simpleCall(model, b) };
+          const out = await this.attempt(model, body, { isDeep: false, stream: false });
           this.lastModel = model;
           return out;
         } catch (e) {
-          lastError = e;
-          if (e.kind === 'no-key' || e.kind === 'bad-key' || e.kind === 'cancelled') throw e;
-          if (e.spoken) throw e; // metà risposta è già stata detta: non si ricomincia con un altro modello
-          if (e.kind === 'no-thinking' && thinking) { thinking = false; continue; }
-          if (e.kind === 'http') throw e; // richiesta rifiutata: cambiare modello non serve
+          if (['no-key', 'bad-key', 'cancelled', 'http'].includes(e.kind)) throw e;
           this.cool(model, e);
-          break; // prossimo modello
+          errors.push(e);
         }
       }
+      throw this.summarize(errors);
     }
-    throw lastError || new BrainError('http', 'nessun modello disponibile');
+
+    return new Promise((resolve, reject) => {
+      const errors = [];
+      const running = new Map(); // modello -> AbortController
+      const started = new Map(); // modello -> quando è partito
+      let next = 0;
+      let winner = null;
+      let settled = false;
+      let hedge;
+      const stopOthers = (keep) => { for (const [m, c] of running) if (m !== keep) { try { c.abort(); } catch { /* ignore */ } } };
+      const finish = (fn, value) => { if (settled) return; settled = true; clearTimeout(hedge); fn(value); };
+
+      const launch = () => {
+        if (settled || winner || next >= chain.length) return;
+        const model = chain[next++];
+        const isDeep = deep && model === deepModel;
+        const ctl = new AbortController();
+        running.set(model, ctl);
+        started.set(model, Date.now());
+        const claim = () => {
+          if (!winner) {
+            winner = model;
+            clearTimeout(hedge);
+            // chi era partito prima ed è ancora muto va a riposo: la prossima volta non si perde tempo con lui
+            for (const m of running.keys()) if (m !== model && Date.now() - started.get(m) >= HEDGE_NEXT_MS) this.cool(m, { kind: 'timeout' });
+            stopOthers(model);
+          }
+          return winner === model;
+        };
+        this.attempt(model, body, { isDeep, stream: true, onThought, onText, claim, ctl })
+          .then((out) => {
+            running.delete(model);
+            this.lastModel = model;
+            if (!isDeep) store.set('lastGood', { model, ts: Date.now() });
+            stopOthers(model);
+            finish(resolve, out);
+          })
+          .catch((e) => {
+            running.delete(model);
+            if (settled || e.kind === 'lost') return;
+            if (['no-key', 'bad-key', 'cancelled', 'http'].includes(e.kind) || e.spoken) { stopOthers(null); finish(reject, e); return; }
+            this.cool(model, e);
+            errors.push(e);
+            if (winner === model) winner = null; // aveva iniziato ma è caduto prima di dire qualcosa
+            if (next < chain.length) { clearTimeout(hedge); launch(); }
+            else if (!running.size) finish(reject, this.summarize(errors));
+          });
+        // se questo modello tace, tra poco ne parte un altro accanto
+        clearTimeout(hedge);
+        if (next < chain.length) hedge = setTimeout(launch, isDeep ? 12000 : next === 1 ? HEDGE_MS : HEDGE_NEXT_MS);
+      };
+      launch();
+    });
   }
 
   // Prova tecnica dalle impostazioni: non tocca la conversazione.
@@ -450,8 +562,8 @@ export class Brain {
   // Il Signore ha interrotto: si smette di generare.
   cancel() {
     this.cancelFlag = true;
-    try { this._fetchCtl && this._fetchCtl.abort(); } catch { /* ignore */ }
-    if (this._onCancel) this._onCancel();
+    for (const c of [...this._ctls]) { try { c.abort(); } catch { /* ignore */ } }
+    for (const fn of [...this._cancelers]) fn();
   }
 
   // Segna nella memoria che l'ultima risposta è stata interrotta a metà.

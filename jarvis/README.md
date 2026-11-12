@@ -18,6 +18,12 @@ Jarvis è una web app che gira nel browser Chrome del tablet Android. Non ha ser
 - **Riprende il filo quando lo riapri.** Anche se chiudi l'app senza salutare, alla riapertura ricorda la conversazione, sa quanto tempo è passato e scrive da solo il diario di quella precedente. La memoria vive nel browser del dispositivo: apri Jarvis sempre dalla stessa icona, altrimenti è come parlare con un gemello che non sa nulla.
 - **Ti lascia finire.** Aspetta una vera pausa prima di rispondere, quindi puoi ragionare ad alta voce.
 
+### Veloce
+- **Parla mentre pensa.** Comincia a rispondere a voce dalla prima frase, mentre il resto della risposta sta ancora arrivando.
+- **Comandi istantanei**, senza passare dal cervello e senza consumare richieste: «che ore sono», «che giorno è», «timer di 10 minuti», e con Spotify «pausa», «riprendi», «prossima», «precedente», «alza/abbassa il volume», «volume al 40».
+- **Memoria al volo.** A ogni domanda riceve i ricordi che c'entrano con quello che stai dicendo, e può frugare da solo nei ricordi vecchi, nel diario e nelle idee salvate.
+- **Apre altre app con un tuo tocco.** «Portami a…», «cercami su YouTube…», «scrivi su WhatsApp a…»: prepara un pulsante dorato sullo schermo. Android non permette a una pagina web di aprire app da sola, quindi serve il tocco.
+
 ### Brainstorming
 Di' ad esempio «Jarvis, facciamo brainstorming su un regalo per mia madre».
 - Passa al modello più potente (Gemini Pro). Se la quota gratuita finisce, torna da solo a Flash senza interrompersi.

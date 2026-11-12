@@ -6,7 +6,7 @@ import { Brain, BrainError, logError } from './brain.js';
 import { createHandlers, bindBrain, reminders, getWeather, weatherText, locate, knownLocation } from './tools.js';
 import { spotify, redirectUri } from './spotify.js';
 import { seedMemories } from './seed.js';
-import { IOS, ANDROID, IOS_OTHER_BROWSER, SAMSUNG_BROWSER, STANDALONE, deviceName, chromeLink } from './platform.js';
+import { IOS, ANDROID, MOBILE, IOS_OTHER_BROWSER, SAMSUNG_BROWSER, STANDALONE, deviceName, chromeLink } from './platform.js';
 
 seedMemories();
 
@@ -31,7 +31,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.2';
+const JARVIS_VERSION = '3.3';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -197,8 +197,10 @@ document.addEventListener('pointerdown', () => {
 // così il Signore può ragionare ad alta voce senza essere interrotto.
 const heard = { text: '', timer: null };
 function silenceMs() {
-  if (!state.conversation) return 700;
-  return brain.brainstorm ? 2600 : 1500;
+  if (!state.conversation) return 600;
+  // su telefoni e tablet il riconoscimento ha già aspettato la fine della frase: basta poco
+  if (brain.brainstorm) return 2200;
+  return MOBILE ? 850 : 1200;
 }
 function armSilence() {
   clearTimeout(heard.timer);
@@ -255,7 +257,16 @@ const handlers = createHandlers({
   onBrainstormChanged: () => refreshBoard(),
   onLocationChanged: () => refreshWeather(),
   rest: () => { state.restAfterReply = true; },
+  offerLink: (label, url) => {
+    const a = $('btn-open');
+    a.textContent = `${label.toUpperCase()} · TOCCA`;
+    a.href = url;
+    a.hidden = false;
+    clearTimeout(offerLink.timer);
+    offerLink.timer = setTimeout(() => { a.hidden = true; }, 90000);
+  },
 });
+const offerLink = {};
 const brain = new Brain(handlers);
 bindBrain(brain);
 
@@ -400,24 +411,110 @@ async function run(task) {
   }
 }
 
+// ---------- comandi istantanei ----------
+// Le richieste più banali non passano dal cervello: risposta immediata e nessuna richiesta consumata.
+
+function numberWords(n) { return String(n); }
+
+async function quickCommand(raw) {
+  const t = raw.toLowerCase().replace(/[.,!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/^(ehi |hey |ok |per favore |senti |dai )+/, '').replace(/( per favore| grazie| jarvis)+$/, '').trim();
+  if (!t || t.split(' ').length > 7) return null;
+  const now = new Date();
+
+  if (/^(che ore sono|che ora e|che ora è|dimmi l ora|dimmi l'ora|che ore sono adesso|l'ora|ora esatta)$/.test(t)) {
+    return `Sono le ${now.toLocaleTimeString('it-IT', { hour: 'numeric', minute: '2-digit' })}, Signore.`;
+  }
+  if (/^(che giorno e oggi|che giorno è oggi|che giorno e|che giorno è|quanti ne abbiamo( oggi)?|che data e oggi|che data è oggi)$/.test(t)) {
+    return `Oggi è ${now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}, Signore.`;
+  }
+
+  const timer = t.match(/^(?:metti |imposta |fai partire |avvia )?(?:un |il )?timer (?:di |da |per |tra )?(\d+|un|uno|una|mezz'ora|mezzora) ?(second[oi]|minut[oi]|or[ae])?$/);
+  if (timer) {
+    const half = /mezz/.test(timer[1]);
+    const qty = half ? 30 : /^un/.test(timer[1]) ? 1 : Number(timer[1]);
+    const unit = half ? 'minuti' : (timer[2] || 'minuti');
+    const ms = qty * (/second/.test(unit) ? 1000 : /or[ae]/.test(unit) ? 3600000 : 60000);
+    reminders.add('Il timer è scaduto', Date.now() + ms);
+    refreshReminders();
+    return `Timer di ${half ? 'mezz\'ora' : `${numberWords(qty)} ${unit}`} avviato, Signore.`;
+  }
+
+  if (spotify.isConnected()) {
+    try {
+      if (/^(pausa|metti in pausa|metti pausa|ferma la musica|stop alla musica|ferma|stop musica|zitto)$/.test(t)) { await spotify.control('pausa'); refreshMusic(); return 'In pausa, Signore.'; }
+      if (/^(riprendi|continua|riparti|play|rimetti la musica|riprendi la musica)$/.test(t)) { await spotify.control('riprendi'); refreshMusic(); return 'Riprendo, Signore.'; }
+      if (/^(prossima|prossimo|avanti|salta|skip|cambia canzone|prossima canzone|prossimo brano|un altra|un'altra)$/.test(t)) { await spotify.control('successivo'); setTimeout(refreshMusic, 1200); return 'Prossimo brano.'; }
+      if (/^(precedente|indietro|torna indietro|canzone precedente|brano precedente|quella di prima)$/.test(t)) { await spotify.control('precedente'); setTimeout(refreshMusic, 1200); return 'Torno indietro.'; }
+      const vol = t.match(/^(?:metti |imposta )?(?:il )?volume (?:al |a )?(\d{1,3})(?: per cento)?$/);
+      if (vol) { spotify._ducked = null; await spotify.control('volume', vol[1]); return `Volume al ${vol[1]} per cento.`; }
+      const updown = t.match(/^(alza|aumenta|abbassa|diminuisci)(?: un po)?(?: il)? volume$|^volume (su|giu|giù)$|^piu (forte|piano)$|^più (forte|piano)$/);
+      if (updown) {
+        const up = /alza|aumenta|su|forte/.test(t);
+        const np = await spotify.nowPlaying();
+        const base = spotify._ducked != null ? spotify._ducked : (np.volume ?? 50);
+        const v = Math.max(0, Math.min(100, base + (up ? 15 : -15)));
+        spotify._ducked = null;
+        await spotify.control('volume', v);
+        return `Volume al ${v} per cento.`;
+      }
+    } catch (e) {
+      return `Spotify non mi ha dato retta, Signore: ${e.message}`;
+    }
+  }
+  return null;
+}
+
 function handle(text) {
   showUser(text);
   run(async () => {
     setMode('thinking');
     core.burst(40);
-    let reply;
     clearThoughts();
+
+    // prima i comandi istantanei
+    const quick = await quickCommand(text).catch(() => null);
+    if (quick) {
+      brain.note(text, quick);
+      await say(quick);
+      return;
+    }
+
+    let reply;
+    let live = null;      // voce in diretta: parte alla prima frase, mentre il resto arriva
+    let spoken = '';
+    const jarvisEl = $('sub-jarvis');
     try {
       reply = await brain.ask(text, {
         onTool: (name) => { core.burst(25); addThought(TOOL_LABELS[name] || name); },
         onThought: (t) => { core.burst(15); addThought(t); },
+        onText: (delta) => {
+          if (!live) {
+            fadeThoughts();
+            clearInterval(typeTimer);
+            live = mouth.stream(); // il microfono è già spento da quando è partita la richiesta
+          }
+          spoken += delta;
+          jarvisEl.textContent = spoken.replace(/[*_#`]/g, '');
+          jarvisEl.scrollTop = jarvisEl.scrollHeight;
+          live.push(delta);
+        },
       });
     } catch (e) {
-      reply = errorMessage(e);
+      const msg = errorMessage(e);
+      if (live) { await live.end(); live = null; }
+      reply = spoken ? '' : msg;
+      if (spoken && msg) reply = 'Mi si è interrotto il pensiero a metà, Signore. Riprova.';
     }
     sys('sys-brain', !!getSettings().geminiKey);
     fadeThoughts();
-    await say(reply || 'Uhm. Ho perso il filo, Signore.');
+    if (live) {
+      await live.end();
+    } else if (reply) {
+      await say(reply);
+    } else if (!spoken) {
+      await say('Uhm. Ho perso il filo, Signore.');
+    }
     if (state.restAfterReply) enterRest();
     else if (state.endAfterReply) endConversation();
   });
@@ -448,6 +545,7 @@ const TOOL_LABELS = {
   dimentica: 'dimentico', spotify_riproduci: 'cerco su Spotify', spotify_comando: 'comando Spotify',
   spotify_cosa_suona: 'ascolto cosa suona', brainstorming: 'preparo la lavagna',
   salva_idea: 'salvo l\'idea', leggi_idee: 'rileggo le idee', termina_conversazione: 'chiudo',
+  cerca_nei_ricordi: 'frugo nella memoria', apri_sul_tablet: 'preparo il pulsante',
   dove_sono: 'controllo dove mi trovo', imposta_citta: 'aggiorno la posizione', vai_a_riposo: 'mi metto a riposo',
 };
 

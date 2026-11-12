@@ -157,6 +157,13 @@
           </select>
         </label>
         <p class="help">Mentre parlo ascolto solo se inizi a parlare tu, e mi zittisco. Se mi interrompo da solo, abbassa la sensibilità. Se con questa funzione la mia voce esce più bassa, spegnila: toccare lo schermo funziona sempre.</p>
+        <div class="row">
+          <button type="button" id="s-calibrate" class="small">Tara sulla mia voce</button>
+          <span id="s-calib-status" class="help"></span>
+        </div>
+        <p class="help">La taratura dura cinque secondi: parli normalmente da dove stai di solito, e da lì in poi mi fermo solo per una voce forte come la tua, non per chi parla dall'altro lato della stanza. Puoi anche dirmi «Jarvis, tara il microfono».</p>
+        <label class="check"><input type="checkbox" id="s-strict"> C'è gente: rispondo solo alle frasi che contengono «Jarvis»</label>
+        <p class="help">Utile quando in casa parlano altre persone: così le loro frasi non vengono scambiate per domande rivolte a me. A voce: «Jarvis, c'è gente» e «Jarvis, siamo soli».</p>
         <label>Parole di attivazione in più, separate da virgola
           <input id="s-wake" autocomplete="off" placeholder="es. giarvi, ehi amico">
         </label>

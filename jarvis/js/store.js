@@ -28,6 +28,9 @@ export const DEFAULT_SETTINGS = {
   pitch: 0.95,
   place: '',                // città scritta a mano; vuoto = posizione automatica (GPS)
   wakeWords: '',            // parole di attivazione in più, separate da virgola
+  voiceLevel: 0,            // volume della voce del Signore, misurato con la taratura (0 = non tarato)
+  roomLevel: 0,             // rumore di fondo misurato nella stessa occasione
+  strictWake: false,        // "c'è gente": risponde solo alle frasi che contengono «Jarvis»
   bargeIn: '',              // interruzione a voce: alta | media | bassa | off; vuoto = scelta automatica
   spotifyClientId: '',
 };

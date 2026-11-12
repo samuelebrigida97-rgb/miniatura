@@ -28,6 +28,8 @@ Jarvis è una web app che gira nel browser Chrome del tablet Android. Non ha ser
 - **A voce:** se inizi a parlare mentre lui parla, si zittisce in circa mezzo secondo e ti ascolta. Mentre parla non trascrive nulla: misura solo se arriva una voce vicina, con la cancellazione dell'eco per non sentire se stesso. Silenzio, rumore di fondo e voci lontane non lo fermano.
 - **Col dito:** un tocco in qualsiasi punto dello schermo lo ferma sempre.
 - Si ricorda di essere stato interrotto e non ricomincia da capo.
+- **Taratura sulla tua voce (importante se in casa parlano altre persone).** Di' «Jarvis, tara il microfono» e parla cinque secondi con la voce normale, da dove stai di solito. Jarvis misura il tuo volume e quello della stanza: da lì in poi si ferma solo per una voce forte come la tua, non per chi parla dall'altro lato della stanza. Rifalla se cambi posto al tablet.
+- **Modalità «c'è gente».** Di' «Jarvis, c'è gente»: risponde solo alle frasi che contengono «Jarvis», così le chiacchiere in casa non diventano domande per lui. «Jarvis, siamo soli» riporta la conversazione libera.
 - In ⚙ → Ascolto scegli la sensibilità o la spegni. Se scatta a vuoto due volte di fila, abbassa la sensibilità da solo. Su iPhone e iPad parte spenta, perché lì abbassa il volume della voce: resta il tocco.
 - Limite: con l'Alexa come cassa Bluetooth la cancellazione dell'eco funziona peggio. Se si interrompe da solo, usa la sensibilità bassa o spegnila.
 

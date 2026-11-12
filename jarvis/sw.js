@@ -1,6 +1,6 @@
 // Service worker minimo: permette di installare Jarvis come app e di aprirlo anche con rete instabile.
 // Strategia "prima la rete": gli aggiornamenti arrivano subito, la cache serve solo da riserva.
-const CACHE = 'jarvis-v14';
+const CACHE = 'jarvis-v15';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icon.svg',
   'js/main.js', 'js/neural.js', 'js/voice.js', 'js/brain.js', 'js/tools.js', 'js/spotify.js', 'js/store.js', 'js/seed.js', 'js/platform.js',

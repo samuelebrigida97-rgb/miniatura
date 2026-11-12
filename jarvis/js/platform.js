@@ -18,3 +18,13 @@ export function deviceName() {
   if (ANDROID) return /Mobile/i.test(ua) ? 'telefono Android' : 'tablet Android';
   return 'computer';
 }
+
+// Su Android il microfono per i siti c'è solo in Chrome: Samsung Internet, Firefox e altri non lo offrono.
+export const SAMSUNG_BROWSER = /SamsungBrowser/i.test(ua);
+
+// Link che su Android riapre questa pagina dentro Chrome (portandosi dietro la chiave, se c'è).
+export function chromeLink(key) {
+  const path = location.host + location.pathname;
+  const query = key ? `?chiave=${encodeURIComponent(key)}` : '';
+  return `intent://${path}${query}#Intent;scheme=https;package=com.android.chrome;end`;
+}

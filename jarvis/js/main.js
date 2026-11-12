@@ -6,7 +6,7 @@ import { Brain, BrainError, logError } from './brain.js';
 import { createHandlers, bindBrain, reminders, getWeather, weatherText, locate, knownLocation } from './tools.js';
 import { spotify, redirectUri } from './spotify.js';
 import { seedMemories } from './seed.js';
-import { IOS, IOS_OTHER_BROWSER, STANDALONE, deviceName } from './platform.js';
+import { IOS, ANDROID, IOS_OTHER_BROWSER, SAMSUNG_BROWSER, STANDALONE, deviceName, chromeLink } from './platform.js';
 
 seedMemories();
 
@@ -14,20 +14,24 @@ seedMemories();
 // (e subito tolta dall'indirizzo). Serve a non doverla incollare a mano in ogni browser.
 let keyImported = false;
 (function importKeyFromLink() {
+  const fromQuery = new URLSearchParams(location.search).get('chiave');
   const m = location.hash.match(/^#chiave=(.+)$/);
-  if (!m) return;
-  const key = decodeURIComponent(m[1]).replace(/[\s"']/g, '');
+  if (!m && !fromQuery) return;
+  const key = (fromQuery || decodeURIComponent(m[1])).replace(/[\s"']/g, '');
   if (key) {
     saveSettings({ geminiKey: key });
     store.remove('models');
     store.remove('cooldowns');
     keyImported = true;
   }
-  history.replaceState(null, '', location.pathname + location.search);
+  const rest = new URLSearchParams(location.search);
+  rest.delete('chiave');
+  const q = rest.toString();
+  history.replaceState(null, '', location.pathname + (q ? `?${q}` : ''));
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.1';
+const JARVIS_VERSION = '3.2';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -287,7 +291,7 @@ function refreshMic() {
     el.hidden = state.mode === 'off' || state.rest || speakingOrThinking;
     if (el.hidden) return;
     let text; let off = true;
-    if (!ears.supported) text = IOS ? 'microfono non disponibile qui: aprimi con Safari, o scrivimi con ⌨' : 'microfono non disponibile: aprimi con Chrome, o scrivimi con ⌨';
+    if (!ears.supported) text = IOS ? 'microfono non disponibile qui: aprimi con Safari, o scrivimi con ⌨' : 'microfono non disponibile in questo browser: tocca «Apri in Chrome»';
     else if (ears.fatal) text = 'microfono non consentito: dai il permesso al browser';
     else if (ears.needsTap) text = 'microfono in pausa: tocca «Tocca per parlare»';
     else if (ears.running || ears.wanted) { text = 'microfono acceso'; off = false; }
@@ -627,6 +631,7 @@ function fillDiag() {
     `Modello in uso: ${brain.lastModel || (m ? brain.chain()[0] : 'non ancora scelto')}`,
     `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why}, fino alle ${new Date(v.until).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`).join('; ') || 'nessuno'}`,
     `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
+    `Browser: ${SAMSUNG_BROWSER ? 'Samsung Internet (NON dà il microfono: usa Chrome)' : /Firefox|FxiOS/i.test(navigator.userAgent) ? 'Firefox (non dà il microfono)' : /Edg/i.test(navigator.userAgent) ? 'Edge' : /CriOS|Chrome/i.test(navigator.userAgent) ? 'Chrome' : /Safari/i.test(navigator.userAgent) ? 'Safari' : 'altro'}`,
     `Dispositivo: ${deviceName()}${STANDALONE ? ', aperto dall\'icona' : ', aperto nel browser'} · Schermo sempre acceso: ${screenAwake}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'}${ears.needsTap ? ' (serve un tocco per parlare)' : ''} · Voci italiane: ${mouth.italianVoices().length}`,
     `Voce: ${!window.speechSynthesis ? 'NON disponibile in questo browser' : mouth.lastProblem ? `PROBLEMA: ${mouth.lastProblem}` : 'nessun problema rilevato'}`,
@@ -977,14 +982,18 @@ async function boot() {
   sys('sys-brain', !!getSettings().geminiKey);
   if (getSettings().geminiKey) brain.warmup().then(() => sys('sys-brain', true)).catch(() => sys('sys-brain', false, true));
 
+  let noMic = '';
   if (!ears.supported) {
-    showJarvis(IOS_OTHER_BROWSER
+    noMic = (IOS_OTHER_BROWSER
       ? 'Su iPhone e iPad posso ascoltarti solo con Safari, Signore: aprimi lì. Qui puoi comunque scrivermi con la tastiera.'
       : IOS && STANDALONE
         ? 'Aperto dall\'icona questo dispositivo non mi dà il microfono, Signore: aprimi da Safari per parlarmi. Qui puoi scrivermi con la tastiera.'
         : IOS
           ? 'Non riesco ad accedere al microfono, Signore. Controlla in Impostazioni che Siri e Dettatura siano attivi. Intanto puoi scrivermi con la tastiera.'
-          : 'Questo browser non mi lascia usare il microfono, Signore: aprimi con Google Chrome. Intanto puoi scrivermi con la tastiera.');
+          : SAMSUNG_BROWSER
+            ? 'Questo è il browser di Samsung, che non mi lascia usare il microfono, Signore. Tocca il pulsante «Apri in Chrome» qui sopra: lì posso sentirti.'
+            : 'Questo browser non mi lascia usare il microfono, Signore: aprimi con Google Chrome. Intanto puoi scrivermi con la tastiera.');
+    showJarvis(noMic);
   }
 
   // chiede la posizione adesso, dentro il tocco: così Chrome mostra la richiesta di permesso
@@ -998,6 +1007,7 @@ async function boot() {
   state.busy = true;
   try {
     await say(getSettings().geminiKey ? greeting() : 'Sistemi online, Signore. Mi manca solo il cervello: incolla la chiave Gemini nelle impostazioni.');
+    if (noMic) await say(noMic); // lo dice anche a voce: è il motivo per cui "non sente"
   } finally {
     state.busy = false;
   }
@@ -1009,6 +1019,15 @@ async function boot() {
 }
 
 $('btn-boot').addEventListener('click', boot);
+
+// Android senza microfono (Samsung Internet, Firefox…): pulsante per riaprire in Chrome.
+function offerChrome() {
+  if (!ANDROID || ears.supported) return;
+  const a = $('btn-chrome');
+  a.href = chromeLink(getSettings().geminiKey);
+  a.hidden = false;
+  $('boot-hint').textContent = `${SAMSUNG_BROWSER ? 'Mi hai aperto con il browser di Samsung' : 'Mi hai aperto con un browser'} che non mi dà il microfono: qui non posso sentirti. Tocca «Apri in Chrome».`;
+}
 
 (async function init() {
   window.__jarvisReady = true;
@@ -1032,6 +1051,7 @@ $('btn-boot').addEventListener('click', boot);
   if (keyImported) $('boot-hint').textContent = 'Chiave ricevuta: ora ho un cervello. Tocca ATTIVA.';
   else if (!getSettings().geminiKey) $('boot-hint').textContent = 'Tocca per accendere. Poi ti chiederò la chiave Gemini: senza quella non posso ragionare.';
   refreshMusic();
+  offerChrome();
 
   if ('serviceWorker' in navigator) {
     // quando arriva una versione nuova e Jarvis è ancora spento, ricarica per usarla subito

@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.7';
+const JARVIS_VERSION = '3.8';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -393,6 +393,35 @@ function startConversation() {
   spotify.duck();
 }
 
+// Modalità «c'è gente»: dopo ogni risposta torna in attesa di «Jarvis», senza chiudere la sessione
+// (niente diario a ogni frase, il brainstorming resta aperto).
+function pauseConversation() {
+  state.conversation = false;
+  spotify.unduck();
+}
+
+// ---------- taratura sulla voce del Signore ----------
+// Misura quanto è forte la sua voce dal punto in cui sta di solito: da lì in poi Jarvis si lascia
+// interrompere solo da una voce a quel livello, non da chi parla dall'altro lato della stanza.
+async function calibrate() {
+  if (!barge.available()) return 'Su questo browser non riesco a misurare il microfono, Signore.';
+  await say('Dopo il segnale parla per cinque secondi con la tua voce normale, da dove stai di solito. Conta fino a dieci, per esempio.');
+  await ears.stop();
+  beep();
+  await new Promise((r) => setTimeout(r, 900));
+  setMode('listening');
+  $('status').textContent = 'TARATURA · PARLA ADESSO';
+  const m = await barge.measure(5000);
+  if (!m) return 'Non ho sentito abbastanza voce, Signore. Riprova parlando un po\' più vicino o più forte: dì di nuovo «tara il microfono».';
+  saveSettings({ voiceLevel: Number(m.voice.toFixed(4)), roomLevel: Number(m.noise.toFixed(4)) });
+  barge.boost = 1;
+  barge.falseTriggers = 0;
+  const noisy = m.noise > m.voice * 0.4;
+  return noisy
+    ? 'Fatto, Signore, ma la stanza è molto rumorosa: ho preso la misura, però potrei confondermi lo stesso. Se mi fermo a sproposito, rifalla quando c\'è più silenzio.'
+    : 'Fatto, Signore. Ho preso la misura della tua voce: d\'ora in poi mentre parlo mi fermo solo per una voce forte come la tua. Chi parla dall\'altra parte della stanza lo lascio correre.';
+}
+
 function endConversation() {
   state.conversation = false;
   state.endAfterReply = false;
@@ -460,6 +489,20 @@ async function quickCommand(raw) {
     .replace(/^(ehi |hey |ok |per favore |senti |dai )+/, '').replace(/( per favore| grazie| jarvis)+$/, '').trim();
   if (!t || t.split(' ').length > 7) return null;
   const now = new Date();
+
+  // taratura del microfono sulla voce del Signore
+  if (/^(tara(mi)?|tarati|calibra|calibrati|fai la taratura|rifai la taratura)( (il|sul) microfono| la voce| sulla mia voce| il microfono sulla mia voce)?$|^taratura( del)? microfono$|^taratura$/.test(t)) {
+    return calibrate();
+  }
+  // «c'è gente»: risponde solo alle frasi che contengono «Jarvis»
+  if (/^(c'e gente|c'è gente|ce gente|ci sono persone|non siamo soli|modalita gente|modalità gente|rispondi solo se ti chiamo|ascolta solo me)$/.test(t)) {
+    saveSettings({ strictWake: true });
+    return 'Ricevuto, Signore. Finché c\'è gente rispondo solo alle frasi che cominciano con il mio nome. Quando siete soli, dimmi «siamo soli».';
+  }
+  if (/^(siamo soli|sono solo|non c'e nessuno|non c'è nessuno|modalita normale|modalità normale|conversazione libera)$/.test(t)) {
+    saveSettings({ strictWake: false });
+    return 'Bene, Signore. Torno ad ascoltarti dopo ogni risposta senza che tu debba chiamarmi.';
+  }
 
   if (/^(che ore sono|che ora e|che ora è|dimmi l ora|dimmi l'ora|che ore sono adesso|l'ora|ora esatta)$/.test(t)) {
     return `Sono le ${now.toLocaleTimeString('it-IT', { hour: 'numeric', minute: '2-digit' })}, Signore.`;
@@ -535,6 +578,7 @@ function handle(text) {
       brain.note(text, quick);
       await say(quick);
       if (state.endAfterReply) endConversation();
+      else if (getSettings().strictWake) pauseConversation();
       return;
     }
 
@@ -586,6 +630,7 @@ function handle(text) {
     if (state.interrupted) return;
     if (state.restAfterReply) enterRest();
     else if (state.endAfterReply) endConversation();
+    else if (getSettings().strictWake) pauseConversation(); // c'è gente: alla prossima serve di nuovo «Jarvis»
   });
 }
 
@@ -809,6 +854,7 @@ function fillDiag() {
     `Dispositivo: ${deviceName()}${STANDALONE ? ', aperto dall\'icona' : ', aperto nel browser'} · Schermo sempre acceso: ${screenAwake}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'}${ears.needsTap ? ' (serve un tocco per parlare)' : ''} · Voci italiane: ${mouth.italianVoices().length}`,
     `Interruzione a voce: ${bargeMode() === 'off' ? 'spenta' : `attiva, sensibilità ${bargeMode()}`}${barge.available() ? '' : ' (non disponibile in questo browser)'}${barge.lastError ? ` · errore: ${barge.lastError}` : ''} · scattata ${barge.triggers} volte${barge.boost > 1 ? `, attenuata x${barge.boost.toFixed(1)}` : ''}`,
+    `Taratura voce: ${getSettings().voiceLevel ? `sì (voce ${Math.round(getSettings().voiceLevel * 1000)}, stanza ${Math.round((getSettings().roomLevel || 0) * 1000)}, soglia attuale ${Math.round((barge.threshold || 0) * 1000)})` : 'no'} · Modalità «c'è gente»: ${getSettings().strictWake ? 'attiva' : 'spenta'}`,
     `Voce: ${!window.speechSynthesis ? 'NON disponibile in questo browser' : mouth.lastProblem ? `PROBLEMA: ${mouth.lastProblem}` : 'nessun problema rilevato'}`,
     `Memoria: ${brain.remembered()} scambi ricordati parola per parola${brain.summary ? ' + riassunto dei precedenti' : ''}, ${store.get('memories', []).length} ricordi su di te, ${store.get('diary', []).length} pagine di diario · ${storagePersistent === true ? 'protetta' : storagePersistent === false ? 'non ancora garantita da Chrome: per proteggerla installa Jarvis sulla schermata Home' : 'protezione non verificabile'}`,
     `Posizione: ${geo ? `${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'GPS' : geo.source === 'manuale' ? 'scritta a mano' : 'stimata dalla rete'})` : 'non ancora rilevata'}`,
@@ -833,6 +879,10 @@ function openSettings() {
   $('s-city').value = s.place;
   $('s-wake').value = s.wakeWords;
   $('s-barge').value = bargeMode();
+  $('s-strict').checked = !!s.strictWake;
+  $('s-calib-status').textContent = s.voiceLevel
+    ? `Tarato sulla tua voce (volume ${Math.round(s.voiceLevel * 1000)}, stanza ${Math.round((s.roomLevel || 0) * 1000)}).`
+    : 'Non ancora tarato: mi fermo per qualsiasi voce abbastanza forte.';
   const geo = knownLocation();
   $('s-geo').textContent = geo ? `Adesso mi risulta: ${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'dal GPS' : geo.source === 'manuale' ? 'scritta da te' : 'stimata dalla rete, può essere sbagliata'})` : 'Posizione non ancora rilevata.';
   $('s-spotify').value = s.spotifyClientId;
@@ -855,6 +905,7 @@ function readSettingsForm() {
     place: $('s-city').value.trim(),
     wakeWords: $('s-wake').value.trim(),
     bargeIn: $('s-barge').value,
+    strictWake: $('s-strict').checked,
     spotifyClientId: $('s-spotify').value.trim(),
   };
 }
@@ -916,6 +967,13 @@ $('s-locate').addEventListener('click', async () => {
     $('s-geo').textContent = e.message;
   }
   fillDiag();
+});
+
+$('s-calibrate').addEventListener('click', () => {
+  if (state.mode === 'off') { $('s-calib-status').textContent = 'Prima accendimi con ATTIVA.'; return; }
+  if (state.busy) return;
+  $('settings').close();
+  run(async () => { const msg = await calibrate(); await say(msg); });
 });
 
 $('s-clear-errors').addEventListener('click', () => { store.remove('errors'); fillDiag(); });
@@ -1214,6 +1272,11 @@ async function boot(auto) {
     if (noMic) await say(noMic); // lo dice anche a voce: è il motivo per cui "non sente"
   } finally {
     state.busy = false;
+  }
+  // una volta sola: propone la taratura, che serve a non farsi interrompere dalle voci degli altri
+  if (!auto && bargeMode() !== 'off' && barge.available() && !getSettings().voiceLevel && !store.get('calibHint', false)) {
+    store.set('calibHint', true);
+    state.queue.push('Signore, una cosa. Per non farmi interrompere dalle voci degli altri devo imparare quanto è forte la tua. Quando hai dieci secondi dimmi: Jarvis, tara il microfono.');
   }
   // senza un tocco il browser può negare la voce: l'ascolto funziona comunque, e basta toccare lo schermo
   if (auto && mouth.lastProblem) {

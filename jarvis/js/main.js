@@ -6,6 +6,7 @@ import { Brain, BrainError, logError } from './brain.js';
 import { createHandlers, bindBrain, reminders, getWeather, weatherText, locate, knownLocation } from './tools.js';
 import { spotify, redirectUri } from './spotify.js';
 import { seedMemories } from './seed.js';
+import { BargeIn, bargeMode } from './bargein.js';
 import { IOS, ANDROID, MOBILE, IOS_OTHER_BROWSER, SAMSUNG_BROWSER, STANDALONE, deviceName, chromeLink } from './platform.js';
 
 seedMemories();
@@ -31,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.3';
+const JARVIS_VERSION = '3.4';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -91,6 +92,8 @@ const state = {
   endAfterReply: false,
   busy: false,
   queue: [],              // annunci in attesa (es. promemoria scaduti mentre pensa)
+  interrupted: false,     // il Signore ha fermato Jarvis mentre parlava
+  bargePending: false,
   rest: false,            // modalità notte: schermo scuro, ascolto spento
   restAfterReply: false,
   lastHeard: '',
@@ -216,6 +219,7 @@ const ears = new Ears({
   onFinal: (t) => {
     if (state.busy) return;
     state.lastHeard = t;
+    if (state.bargePending) { state.bargePending = false; barge.outcome(true); } // l'interruzione era vera
     heard.text += ` ${t}`;
     if (state.conversation) {
       showUser(heard.text.trim());
@@ -257,6 +261,7 @@ const handlers = createHandlers({
   onBrainstormChanged: () => refreshBoard(),
   onLocationChanged: () => refreshWeather(),
   rest: () => { state.restAfterReply = true; },
+  musicStarted: () => { if (!brain.brainstorm) state.endAfterReply = true; },
   offerLink: (label, url) => {
     const a = $('btn-open');
     a.textContent = `${label.toUpperCase()} · TOCCA`;
@@ -270,6 +275,33 @@ const offerLink = {};
 const brain = new Brain(handlers);
 bindBrain(brain);
 
+// ---------- interruzione ----------
+// Il Signore può fermare Jarvis mentre parla: a voce (se attiva) o toccando lo schermo.
+
+const barge = new BargeIn({
+  getAudioContext: () => { unlockAudio(); return audioCtx; },
+  onInterrupt: () => interrupt('voce'),
+  onInfo: (t) => logError(`interruzione: ${t}`),
+});
+let bargeCheck;
+window.__jarvis = { barge }; // per la diagnostica e le prove
+
+function interrupt(how) {
+  if (state.mode !== 'speaking' && state.mode !== 'thinking') return;
+  state.interrupted = true;
+  barge.stop();
+  brain.cancel();          // smette di generare
+  mouth.cancel();          // smette di parlare
+  brain.markInterrupted(); // e se lo ricorda
+  if (!state.rest) startConversation(); // lo ha interrotto per dire qualcosa: resta in ascolto
+  if (how === 'voce') {
+    // se entro qualche secondo non arriva nessuna frase, era un falso allarme
+    state.bargePending = true;
+    clearTimeout(bargeCheck);
+    bargeCheck = setTimeout(() => { if (state.bargePending) { state.bargePending = false; barge.outcome(false); } }, 6000);
+  }
+}
+
 async function say(text) {
   showJarvis(text);
   // non deve sentire se stesso, e deve aspettare che il microfono sia libero prima di parlare
@@ -277,9 +309,13 @@ async function say(text) {
   await ears.stop();
   if (wasListening) await new Promise((r) => setTimeout(r, 200)); // Android restituisce l'audio con un attimo di ritardo
   try {
-    await mouth.speak(text);
+    const done = mouth.speak(text);
+    if (text.length > 60) barge.start(); // orecchio leggero per l'interruzione, solo sulle frasi lunghe
+    await done;
   } catch (e) {
     logError(`voce: ${e && e.message ? e.message : e}`);
+  } finally {
+    barge.stop(); // libera il microfono prima di tornare ad ascoltare
   }
 }
 
@@ -288,7 +324,10 @@ function listenAgain() {
   if (state.rest) { setMode('sleep'); return; } // di notte non ascolta
   setMode(state.conversation ? 'listening' : 'sleep');
   if (ears.needsTap) { needTapUI(); return; } // Safari: aspetta il tocco
-  ears.start();
+  // se l'orecchio dell'interruzione ha appena lasciato il microfono, un attimo di respiro
+  const justFreed = barge.stoppedAt && Date.now() - barge.stoppedAt < 300;
+  if (justFreed) setTimeout(() => { if (!state.busy && !state.rest && state.mode !== 'off') ears.start(); }, 220);
+  else ears.start();
 }
 
 // Indicatore sempre visibile: dice se il microfono è acceso, e se no cosa fare.
@@ -442,6 +481,24 @@ async function quickCommand(raw) {
 
   if (spotify.isConnected()) {
     try {
+      // "metti i Queen", "fammi sentire la playlist relax": parte subito, senza passare dal cervello
+      const play = t.match(/^(?:metti su|mettimi|metti|fammi sentire|fammi ascoltare|riproduci|suona)\s+(.+)$/);
+      if (play && !/\b(timer|sveglia|promemoria|pausa|volume|lista|silenzio|notte)\b/.test(play[1])) {
+        let q = play[1].trim();
+        let type = 'track';
+        if (/^(?:la |una )?playlist\s+/.test(q)) { type = 'playlist'; q = q.replace(/^(?:la |una )?playlist\s+/, ''); }
+        else if (/^(?:l'|l |un )?album\s+/.test(q)) { type = 'album'; q = q.replace(/^(?:l'|l |un )?album\s+/, ''); }
+        else if (/^(?:qualcosa|un po|un po'|musica|canzoni|brani|roba)\s+(?:di|dei|degli|delle|della|del|d')\s*/.test(q)) { type = 'artist'; q = q.replace(/^(?:qualcosa|un po|un po'|musica|canzoni|brani|roba)\s+(?:di|dei|degli|delle|della|del|d')\s*/, ''); }
+        else if (/^(?:i|gli|le|il|lo|la)\s+\S+$/.test(q)) { type = 'artist'; q = q.replace(/^(?:i|gli|le|il|lo|la)\s+/, ''); }
+        else q = q.replace(/^(?:la canzone|il brano|il pezzo|la traccia)\s+/, '');
+        if (q) {
+          const r = await spotify.play(q, type);
+          setTimeout(refreshMusic, 1500);
+          // parte la musica: Jarvis si fa da parte (volume pieno) e torna in attesa di «Jarvis»
+          if (r.ok && !brain.brainstorm) state.endAfterReply = true;
+          return r.ok ? `Ecco ${r.in_riproduzione}.` : r.messaggio;
+        }
+      }
       if (/^(pausa|metti in pausa|metti pausa|ferma la musica|stop alla musica|ferma|stop musica|zitto)$/.test(t)) { await spotify.control('pausa'); refreshMusic(); return 'In pausa, Signore.'; }
       if (/^(riprendi|continua|riparti|play|rimetti la musica|riprendi la musica)$/.test(t)) { await spotify.control('riprendi'); refreshMusic(); return 'Riprendo, Signore.'; }
       if (/^(prossima|prossimo|avanti|salta|skip|cambia canzone|prossima canzone|prossimo brano|un altra|un'altra)$/.test(t)) { await spotify.control('successivo'); setTimeout(refreshMusic, 1200); return 'Prossimo brano.'; }
@@ -477,12 +534,15 @@ function handle(text) {
     if (quick) {
       brain.note(text, quick);
       await say(quick);
+      if (state.endAfterReply) endConversation();
       return;
     }
 
+    state.interrupted = false;
     let reply;
     let live = null;      // voce in diretta: parte alla prima frase, mentre il resto arriva
     let spoken = '';
+    let bargeOn = false;
     const jarvisEl = $('sub-jarvis');
     try {
       reply = await brain.ask(text, {
@@ -495,6 +555,7 @@ function handle(text) {
             live = mouth.stream(); // il microfono è già spento da quando è partita la richiesta
           }
           spoken += delta;
+          if (!bargeOn && spoken.length > 60) { bargeOn = true; barge.start(); }
           jarvisEl.textContent = spoken.replace(/[*_#`]/g, '');
           jarvisEl.scrollTop = jarvisEl.scrollHeight;
           live.push(delta);
@@ -508,13 +569,21 @@ function handle(text) {
     }
     sys('sys-brain', !!getSettings().geminiKey);
     fadeThoughts();
+    if (state.interrupted) {
+      if (live) await live.end();
+      barge.stop();
+      return; // niente saluti né modalità notte: il Signore sta parlando
+    }
     if (live) {
       await live.end();
+      barge.stop();
+      if (state.interrupted) return;
     } else if (reply) {
       await say(reply);
     } else if (!spoken) {
       await say('Uhm. Ho perso il filo, Signore.');
     }
+    if (state.interrupted) return;
     if (state.restAfterReply) enterRest();
     else if (state.endAfterReply) endConversation();
   });
@@ -649,10 +718,7 @@ $('core').addEventListener('click', (ev) => {
   if (state.mode === 'off') return;
   const c = core.center;
   if (!c || Math.hypot(ev.clientX - c.x, ev.clientY - c.y) > c.r) return;
-  if (state.mode === 'speaking') {
-    mouth.cancel(); // interrompe Jarvis mentre parla
-    return;
-  }
+  if (state.mode === 'speaking' || state.mode === 'thinking') return; // ci pensa il tocco "ovunque" qui sotto
   if (state.busy) return;
   if (ears.needsTap || IOS) { talkFromTap(); return; } // Apple: niente frase di cortesia, si ascolta subito
   if (!state.conversation) {
@@ -661,6 +727,13 @@ $('core').addEventListener('click', (ev) => {
   }
 });
 $('btn-talk').addEventListener('click', () => { if (!state.busy && state.mode !== 'off') talkFromTap(); });
+
+// Un tocco in qualsiasi punto dello schermo mentre parla (o pensa) lo ferma.
+document.addEventListener('click', (ev) => {
+  if (state.mode !== 'speaking' && state.mode !== 'thinking') return;
+  if (ev.target.closest('.buttons, dialog, .open-link, .chrome, .update, form')) return;
+  interrupt('tocco');
+});
 
 $('btn-rest').addEventListener('click', () => { if (state.mode !== 'off' && !state.busy) enterRest(); });
 $('rest').addEventListener('click', exitRest);
@@ -732,6 +805,7 @@ function fillDiag() {
     `Browser: ${SAMSUNG_BROWSER ? 'Samsung Internet (NON dà il microfono: usa Chrome)' : /Firefox|FxiOS/i.test(navigator.userAgent) ? 'Firefox (non dà il microfono)' : /Edg/i.test(navigator.userAgent) ? 'Edge' : /CriOS|Chrome/i.test(navigator.userAgent) ? 'Chrome' : /Safari/i.test(navigator.userAgent) ? 'Safari' : 'altro'}`,
     `Dispositivo: ${deviceName()}${STANDALONE ? ', aperto dall\'icona' : ', aperto nel browser'} · Schermo sempre acceso: ${screenAwake}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'}${ears.needsTap ? ' (serve un tocco per parlare)' : ''} · Voci italiane: ${mouth.italianVoices().length}`,
+    `Interruzione a voce: ${bargeMode() === 'off' ? 'spenta' : `attiva, sensibilità ${bargeMode()}`}${barge.available() ? '' : ' (non disponibile in questo browser)'}${barge.lastError ? ` · errore: ${barge.lastError}` : ''} · scattata ${barge.triggers} volte${barge.boost > 1 ? `, attenuata x${barge.boost.toFixed(1)}` : ''}`,
     `Voce: ${!window.speechSynthesis ? 'NON disponibile in questo browser' : mouth.lastProblem ? `PROBLEMA: ${mouth.lastProblem}` : 'nessun problema rilevato'}`,
     `Memoria: ${brain.remembered()} scambi ricordati parola per parola${brain.summary ? ' + riassunto dei precedenti' : ''}, ${store.get('memories', []).length} ricordi su di te, ${store.get('diary', []).length} pagine di diario · ${storagePersistent === true ? 'protetta' : storagePersistent === false ? 'non ancora garantita da Chrome: per proteggerla installa Jarvis sulla schermata Home' : 'protezione non verificabile'}`,
     `Posizione: ${geo ? `${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'GPS' : geo.source === 'manuale' ? 'scritta a mano' : 'stimata dalla rete'})` : 'non ancora rilevata'}`,
@@ -755,6 +829,7 @@ function openSettings() {
   $('s-pitch-v').textContent = s.pitch;
   $('s-city').value = s.place;
   $('s-wake').value = s.wakeWords;
+  $('s-barge').value = bargeMode();
   const geo = knownLocation();
   $('s-geo').textContent = geo ? `Adesso mi risulta: ${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'dal GPS' : geo.source === 'manuale' ? 'scritta da te' : 'stimata dalla rete, può essere sbagliata'})` : 'Posizione non ancora rilevata.';
   $('s-spotify').value = s.spotifyClientId;
@@ -776,6 +851,7 @@ function readSettingsForm() {
     pitch: Number($('s-pitch').value),
     place: $('s-city').value.trim(),
     wakeWords: $('s-wake').value.trim(),
+    bargeIn: $('s-barge').value,
     spotifyClientId: $('s-spotify').value.trim(),
   };
 }

@@ -147,6 +147,15 @@
 
       <fieldset>
         <legend>Ascolto</legend>
+        <label>Interrompermi a voce mentre parlo
+          <select id="s-barge">
+            <option value="media">Attiva · sensibilità media</option>
+            <option value="alta">Attiva · sensibilità alta (mi fermo al minimo suono)</option>
+            <option value="bassa">Attiva · sensibilità bassa (serve parlare forte)</option>
+            <option value="off">Spenta (mi fermi solo toccando lo schermo)</option>
+          </select>
+        </label>
+        <p class="help">Mentre parlo ascolto solo se inizi a parlare tu, e mi zittisco. Se mi interrompo da solo, abbassa la sensibilità. Se con questa funzione la mia voce esce più bassa, spegnila: toccare lo schermo funziona sempre.</p>
         <label>Parole di attivazione in più, separate da virgola
           <input id="s-wake" autocomplete="off" placeholder="es. giarvi, ehi amico">
         </label>

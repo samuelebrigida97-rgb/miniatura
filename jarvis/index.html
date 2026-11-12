@@ -63,22 +63,26 @@
     <button id="btn-update" class="update" hidden>AGGIORNAMENTO PRONTO · TOCCA</button>
     <button id="btn-talk" class="talk" hidden>TOCCA PER PARLARE</button>
     <div id="status" class="status">SISTEMI OFFLINE</div>
+    <div id="mic-state" class="mic-state" hidden></div>
 
     <div class="subs">
       <div id="sub-user" class="sub-user"></div>
       <div id="sub-jarvis" class="sub-jarvis"></div>
     </div>
 
-    <div class="buttons">
-      <button id="btn-keyboard" class="icon-btn" aria-label="Scrivi">⌨</button>
-      <button id="btn-rest" class="icon-btn" aria-label="Modalità notte">☾</button>
-      <button id="btn-settings" class="icon-btn" aria-label="Impostazioni">⚙</button>
-    </div>
+
 
     <form id="typer" class="typer" hidden>
       <input id="typer-input" autocomplete="off" placeholder="Scrivi a Jarvis…">
       <button type="submit">INVIA</button>
     </form>
+  </div>
+
+  <!-- fuori dall'HUD: restano toccabili anche sopra la schermata di avvio -->
+  <div class="buttons">
+    <button id="btn-keyboard" class="icon-btn" aria-label="Scrivi">⌨</button>
+    <button id="btn-rest" class="icon-btn" aria-label="Modalità notte">☾</button>
+    <button id="btn-settings" class="icon-btn" aria-label="Impostazioni">⚙</button>
   </div>
 
   <div id="rest" class="rest" hidden>
@@ -93,7 +97,8 @@
       <div class="boot-title">J.A.R.V.I.S.</div>
       <div class="boot-sub">Just A Rather Very Intelligent System</div>
       <button id="btn-boot" class="boot-btn">ATTIVA</button>
-      <div id="boot-hint" class="boot-hint">Tocca per accendere. Poi basta dire «Jarvis».</div>
+      <div id="boot-hint" class="boot-hint">Sono spento: finché non tocchi ATTIVA non posso sentirti. Poi basta dire «Jarvis».</div>
+      <div id="boot-error" class="boot-error" hidden></div>
     </div>
   </div>
 
@@ -195,6 +200,22 @@
     </form>
   </dialog>
 
+  <script>
+    // Rete di sicurezza: se qualcosa si rompe, lo si legge sullo schermo invece di restare davanti a un Jarvis muto.
+    (function () {
+      var seen = {};
+      function show(msg) {
+        if (!msg || seen[msg]) return; seen[msg] = 1;
+        try { var l = JSON.parse(localStorage.getItem('jarvis.errors') || '[]'); l.push({ t: new Date().toLocaleTimeString('it-IT'), text: 'js: ' + msg }); localStorage.setItem('jarvis.errors', JSON.stringify(l.slice(-12))); } catch (e) {}
+        var box = document.getElementById('boot-error'); if (!box) return;
+        box.hidden = false; box.textContent = 'Si è verificato un errore: ' + msg + ' — fai uno screenshot e mandalo a chi ti ha costruito Jarvis.';
+      }
+      window.addEventListener('error', function (e) { show((e.message || 'errore') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+      window.addEventListener('unhandledrejection', function (e) { var r = e.reason; show(r && r.message ? r.message : String(r)); });
+      // se dopo 6 secondi il programma non è partito, lo dice
+      setTimeout(function () { if (!window.__jarvisReady) show('il programma non si è avviato (file non caricati: prova a ricaricare la pagina)'); }, 6000);
+    })();
+  </script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

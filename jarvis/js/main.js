@@ -27,7 +27,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.0';
+const JARVIS_VERSION = '3.1';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -74,8 +74,9 @@ const core = new NeuralCore($('core'));
 function placeStatus() {
   const edge = core.bottomEdge();
   $('status').style.top = `${edge + 8}px`;
+  $('mic-state').style.top = `${edge + 30}px`;
   // in verticale i pensieri compaiono sotto il nucleo, in orizzontale in alto
-  $('thoughts').style.top = innerWidth < innerHeight ? `${edge + 34}px` : '';
+  $('thoughts').style.top = innerWidth < innerHeight ? `${edge + 56}px` : '';
 }
 placeStatus();
 window.addEventListener('resize', placeStatus);
@@ -103,6 +104,8 @@ const STATUS = {
 
 function setMode(mode) {
   state.mode = mode;
+  document.body.classList.toggle('is-off', mode === 'off');
+  refreshMic();
   core.setState(mode);
   const el = $('status');
   el.textContent = STATUS[mode];
@@ -223,7 +226,7 @@ const ears = new Ears({
     if (state.conversation) showUser(`${heard.text} ${t}`.trim());
     if (heard.text) armSilence(); // sta ancora parlando: aspetta
   },
-  onActive: (on) => sys('sys-ears', on || ears.wanted),
+  onActive: (on) => { sys('sys-ears', on || ears.wanted); refreshMic(); },
   onError: (kind) => {
     logError(`udito: ${kind}`);
     if (kind === 'microfono-negato') {
@@ -273,6 +276,27 @@ function listenAgain() {
   ears.start();
 }
 
+// Indicatore sempre visibile: dice se il microfono è acceso, e se no cosa fare.
+let micTimer;
+function refreshMic() {
+  clearTimeout(micTimer);
+  // piccolo ritardo: tra una frase e l'altra il microfono si riaccende da solo, non deve lampeggiare
+  micTimer = setTimeout(() => {
+    const el = $('mic-state');
+    const speakingOrThinking = state.mode === 'speaking' || state.mode === 'thinking';
+    el.hidden = state.mode === 'off' || state.rest || speakingOrThinking;
+    if (el.hidden) return;
+    let text; let off = true;
+    if (!ears.supported) text = IOS ? 'microfono non disponibile qui: aprimi con Safari, o scrivimi con ⌨' : 'microfono non disponibile: aprimi con Chrome, o scrivimi con ⌨';
+    else if (ears.fatal) text = 'microfono non consentito: dai il permesso al browser';
+    else if (ears.needsTap) text = 'microfono in pausa: tocca «Tocca per parlare»';
+    else if (ears.running || ears.wanted) { text = 'microfono acceso'; off = false; }
+    else text = 'microfono spento: tocca il cerchio al centro';
+    el.textContent = text;
+    el.classList.toggle('off', off);
+  }, 500);
+}
+
 function needTapUI() {
   $('btn-talk').hidden = false;
   if (state.mode === 'listening' || state.mode === 'sleep') $('status').textContent = 'MICROFONO IN PAUSA';
@@ -296,12 +320,15 @@ function enterRest() {
   ears.stop();
   $('btn-talk').hidden = true;
   $('rest').hidden = false;
+  document.body.classList.add('is-rest');
   setMode('sleep');
 }
 
 function exitRest() {
   state.rest = false;
   $('rest').hidden = true;
+  document.body.classList.remove('is-rest');
+  refreshMic();
   if (state.busy) return;
   startConversation();
   run(async () => { await say(pick(['Eccomi, Signore.', 'Sono sveglio, Signore.', 'Bentornato, Signore.'])); });
@@ -781,7 +808,13 @@ async function checkForUpdate() {
     if (!r.ok) return;
     const { version } = await r.json();
     if (!version || version === JARVIS_VERSION) return 'aggiornato';
-    if (state.mode === 'off') { location.reload(); return 'ricarico'; } // spento: si aggiorna da solo
+    let already = null;
+    try { already = sessionStorage.getItem('jarvis.reloadedFor'); } catch { /* ignore */ }
+    if (state.mode === 'off' && already !== version) { // spento: si aggiorna da solo, una volta sola
+      try { sessionStorage.setItem('jarvis.reloadedFor', version); } catch { /* ignore */ }
+      location.reload();
+      return 'ricarico';
+    }
     $('btn-update').hidden = false;
     $('btn-update').textContent = `AGGIORNAMENTO ${version} PRONTO · TOCCA`;
     if (!updateAnnounced && !state.rest) {
@@ -794,7 +827,10 @@ async function checkForUpdate() {
     return 'errore'; // senza rete riproverà
   }
 }
-$('btn-update').addEventListener('click', () => location.reload());
+$('btn-update').addEventListener('click', () => {
+  try { sessionStorage.setItem('jarvis.justUpdated', '1'); } catch { /* ignore */ }
+  location.reload();
+});
 $('s-update').addEventListener('click', async () => {
   $('s-test-result').textContent = 'Controllo…';
   const r = await checkForUpdate();
@@ -975,6 +1011,8 @@ async function boot() {
 $('btn-boot').addEventListener('click', boot);
 
 (async function init() {
+  window.__jarvisReady = true;
+  document.body.classList.add('is-off');
   tickClock();
   setInterval(tickClock, 1000);
   setInterval(checkReminders, 1000);
@@ -988,6 +1026,9 @@ $('btn-boot').addEventListener('click', boot);
   const sp = await spotify.handleRedirect().catch((e) => ({ ok: false, error: e.message }));
   if (sp && !sp.ok) showJarvis(`Il collegamento con Spotify non è riuscito: ${sp.error}`);
   if (sp && sp.ok) showJarvis('Spotify collegato, Signore. Tocca ATTIVA e chiedimi un po\' di musica.');
+  let justUpdated = false;
+  try { justUpdated = sessionStorage.getItem('jarvis.justUpdated') === '1'; sessionStorage.removeItem('jarvis.justUpdated'); } catch { /* ignore */ }
+  if (justUpdated) $('boot-hint').textContent = `Aggiornato alla versione ${JARVIS_VERSION}. Tocca ATTIVA per riaccendermi.`;
   if (keyImported) $('boot-hint').textContent = 'Chiave ricevuta: ora ho un cervello. Tocca ATTIVA.';
   else if (!getSettings().geminiKey) $('boot-hint').textContent = 'Tocca per accendere. Poi ti chiederò la chiave Gemini: senza quella non posso ragionare.';
   refreshMusic();

@@ -228,6 +228,13 @@ body.is-off .status, body.is-off .subs { visibility: hidden; }
 body.is-rest .buttons { display: none; }
 
 /* ---- avvisi toccabili ---- */
+.chrome {
+  position: fixed; z-index: 12; left: 50%; transform: translateX(-50%);
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  padding: 16px 26px; border: 2px solid var(--gold); color: #1a1200; background: var(--gold);
+  font: 700 15px/1 Orbitron, sans-serif; letter-spacing: 0.18em; text-decoration: none; white-space: nowrap;
+  box-shadow: 0 0 30px rgba(255, 207, 122, 0.55); pointer-events: auto;
+}
 .update, .talk {
   position: absolute; left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer; white-space: nowrap;

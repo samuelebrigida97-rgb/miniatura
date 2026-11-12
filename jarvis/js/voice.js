@@ -75,6 +75,7 @@ export class Ears {
     };
     rec.onend = () => {
       this.running = false;
+      if (this._onStopped) this._onStopped();
       if (this.wanted) this._flush(); // frase rimasta in sospeso a fine sessione
       else this.sessionText = '';
       this.onActive(false);
@@ -107,11 +108,19 @@ export class Ears {
     this._start();
   }
 
+  // Spegne l'ascolto. La promessa si chiude quando il microfono è davvero libero:
+  // su Android, finché non lo è, l'audio della voce esce muto o tagliato.
   stop() {
     this.wanted = false;
     this.sessionText = '';
     clearTimeout(this._restart);
-    try { this.rec && this.rec.abort(); } catch { /* ignore */ }
+    if (!this.rec || !this.running) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); this._onStopped = null; resolve(); };
+      const timer = setTimeout(done, 700);
+      this._onStopped = done;
+      try { this.rec.abort(); } catch { done(); }
+    });
   }
 }
 
@@ -123,10 +132,25 @@ export class Mouth {
     this.voices = [];
     this.speaking = false;
     this._token = 0;
+    this.unlocked = false;
+    this.lastProblem = '';
     if (this.synth) {
       this.loadVoices();
       this.synth.onvoiceschanged = () => this.loadVoices();
     }
+  }
+
+  // Da chiamare DENTRO un tocco dell'utente: iPhone e alcuni Android lasciano parlare la pagina
+  // solo se la prima frase parte nell'istante del tocco. Una frase muta "sblocca" la voce.
+  unlock() {
+    if (!this.synth || this.unlocked || this.speaking) return;
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      u.lang = 'it-IT';
+      this.synth.speak(u);
+      this.unlocked = true;
+    } catch { /* ignore */ }
   }
 
   loadVoices() {
@@ -201,9 +225,19 @@ export class Mouth {
           u.rate = Number(rate) || 1;
           u.pitch = Number(pitch) || 1;
           // rete di sicurezza: a volte Android non chiama onend
-          guard = setTimeout(() => { u.onend = null; u.onerror = null; next(); }, piece.length * 110 + 4000);
+          guard = setTimeout(() => {
+            u.onend = null; u.onerror = null;
+            if (!heard) this.problem('la sintesi vocale non ha dato segni di vita (volume a zero, o voce italiana non installata?)');
+            next();
+          }, piece.length * 110 + 4000);
+          let heard = false;
+          u.onstart = () => { heard = true; this.lastProblem = ''; };
           u.onend = () => { clearTimeout(guard); next(); };
-          u.onerror = () => { clearTimeout(guard); next(); };
+          u.onerror = (ev) => {
+            clearTimeout(guard);
+            if (ev && ev.error && ev.error !== 'interrupted' && ev.error !== 'canceled') this.problem(`errore della sintesi vocale: ${ev.error}`);
+            next();
+          };
           this._current = u; // tiene vivo l'oggetto: altrimenti Chrome può non chiamare onend
           this.synth.speak(u);
         } catch {
@@ -215,6 +249,12 @@ export class Mouth {
       // dopo un cancel() Android ha bisogno di un attimo, o si mangia la prima frase
       if (wasBusy) setTimeout(next, 150); else next();
     });
+  }
+
+  problem(text) {
+    if (this.lastProblem === text) return;
+    this.lastProblem = text;
+    this.onProblem?.(text);
   }
 
   cancel() {

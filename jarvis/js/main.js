@@ -26,7 +26,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '2.3';
+const JARVIS_VERSION = '2.4';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -177,6 +177,9 @@ const mouth = new Mouth({
   onStart: () => setMode('speaking'),
   onEnd: () => {},
 });
+mouth.onProblem = (text) => { logError(`voce: ${text}`); sys('sys-voice', true, true); };
+// il primo tocco sullo schermo sblocca la voce (necessario su iPhone)
+document.addEventListener('pointerdown', () => mouth.unlock(), { capture: true });
 
 // Ascolto paziente: i pezzi di frase vengono accumulati e spediti solo dopo una pausa vera,
 // così il Signore può ragionare ad alta voce senza essere interrotto.
@@ -240,7 +243,10 @@ bindBrain(brain);
 
 async function say(text) {
   showJarvis(text);
-  ears.stop(); // non deve sentire se stesso (soprattutto con l'Alexa come cassa)
+  // non deve sentire se stesso, e deve aspettare che il microfono sia libero prima di parlare
+  const wasListening = ears.running;
+  await ears.stop();
+  if (wasListening) await new Promise((r) => setTimeout(r, 200)); // Android restituisce l'audio con un attimo di ritardo
   try {
     await mouth.speak(text);
   } catch (e) {
@@ -554,6 +560,7 @@ function fillDiag() {
     `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why}, fino alle ${new Date(v.until).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`).join('; ') || 'nessuno'}`,
     `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'} · Voci italiane: ${mouth.italianVoices().length}`,
+    `Voce: ${!window.speechSynthesis ? 'NON disponibile in questo browser' : mouth.lastProblem ? `PROBLEMA: ${mouth.lastProblem}` : 'nessun problema rilevato'}`,
     `Memoria: ${brain.remembered()} scambi ricordati parola per parola${brain.summary ? ' + riassunto dei precedenti' : ''}, ${store.get('memories', []).length} ricordi su di te, ${store.get('diary', []).length} pagine di diario · ${storagePersistent === true ? 'protetta' : storagePersistent === false ? 'non ancora garantita da Chrome: per proteggerla installa Jarvis sulla schermata Home' : 'protezione non verificabile'}`,
     `Posizione: ${geo ? `${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'GPS' : geo.source === 'manuale' ? 'scritta a mano' : 'stimata dalla rete'})` : 'non ancora rilevata'}`,
     `Ultima frase sentita: ${state.lastHeard || '(niente)'}`,
@@ -757,6 +764,7 @@ function greeting() {
 }
 
 async function boot() {
+  mouth.unlock(); // subito, dentro il tocco
   $('boot').classList.add('gone');
   try { await document.documentElement.requestFullscreen?.(); } catch { /* ignore */ }
   keepAwake();

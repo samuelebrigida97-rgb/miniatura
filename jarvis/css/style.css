@@ -108,6 +108,13 @@ html, body {
   white-space: nowrap;
   text-shadow: 0 0 10px rgba(70, 200, 255, 0.6);
 }
+.mic-state {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  font-size: 14px; letter-spacing: 0.08em; white-space: nowrap; color: var(--cyan-dim);
+}
+.mic-state::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); vertical-align: 1px; }
+.mic-state.off { color: var(--gold); }
+.mic-state.off::before { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
 .status.thinking { color: var(--gold); text-shadow: 0 0 10px rgba(255, 207, 122, 0.6); }
 
 .subs {
@@ -129,9 +136,10 @@ html, body {
 }
 
 .buttons {
-  position: absolute;
-  top: 120px;
-  right: 16px;
+  position: fixed;
+  z-index: 12; /* sopra anche alla schermata di avvio: le impostazioni si raggiungono sempre */
+  top: calc(120px + env(safe-area-inset-top, 0px));
+  right: calc(16px + env(safe-area-inset-right, 0px));
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -211,6 +219,13 @@ button {
 
 /* nei campi di testo si deve poter scrivere e selezionare (su iPhone altrimenti restano bloccati) */
 input, textarea, select, .settings, .diag { -webkit-user-select: text; user-select: text; }
+
+.boot-error { margin-top: 18px; color: var(--gold); font-size: 14px; line-height: 1.4; user-select: text; -webkit-user-select: text; }
+/* a Jarvis spento restano solo le impostazioni */
+body.is-off #btn-keyboard, body.is-off #btn-rest { display: none; }
+body.is-off .status, body.is-off .subs { visibility: hidden; }
+/* di notte lo schermo resta buio */
+body.is-rest .buttons { display: none; }
 
 /* ---- avvisi toccabili ---- */
 .update, .talk {
@@ -307,7 +322,7 @@ code { font-size: 13px; color: var(--gold); word-break: break-all; }
   #w-temp { font-size: 26px; }
   .bl { display: none; }
   .br { bottom: auto; top: 110px; right: 16px; max-width: 50vw; }
-  .buttons { top: auto; bottom: 16px; right: 16px; flex-direction: row; }
+  .buttons { top: auto; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); flex-direction: row; }
   .subs { width: calc(100vw - 32px); min-width: 0; bottom: 76px; }
   .title { display: none; }
   .update { top: 104px; }

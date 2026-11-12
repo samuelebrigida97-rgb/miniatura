@@ -100,11 +100,11 @@ export class NeuralCore {
   // In orizzontale il nucleo sale e si rimpicciolisce per lasciare spazio ai sottotitoli.
   layout() {
     const { w, h, dpr } = this;
-    if (w > h) return { cx: w / 2, cy: h * 0.43, R: h * 0.23 };
+    if (w > h) return { cx: w / 2, cy: h * 0.42, R: h * 0.215 };
     // in verticale (telefono, tablet in piedi): il nucleo sale e si restringe quanto serve
     // per lasciare libera in basso la zona di stato, sottotitoli e pulsanti
     const cy = h * 0.4;
-    const below = (h - cy - 215 * dpr) / 1.72;
+    const below = (h - cy - 240 * dpr) / 1.72;
     const above = (cy - 95 * dpr) / 1.72;
     const R = Math.max(60 * dpr, Math.min(Math.min(w, h) * 0.27, below, above));
     return { cx: w / 2, cy, R };

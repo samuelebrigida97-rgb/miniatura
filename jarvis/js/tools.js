@@ -234,7 +234,7 @@ export const declarations = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        cosa: S('STRING', 'Che cosa aprire', { enum: ['mappa', 'youtube', 'whatsapp', 'telefonata', 'sito', 'ricerca'] }),
+        cosa: S('STRING', 'Che cosa aprire', { enum: ['mappa', 'youtube', 'spotify', 'whatsapp', 'telefonata', 'sito', 'ricerca'] }),
         testo: S('STRING', 'Destinazione o luogo (mappa), cosa cercare (youtube, ricerca), testo del messaggio (whatsapp), indirizzo web (sito)'),
         numero: S('STRING', 'Numero di telefono con prefisso internazionale, per whatsapp e telefonata'),
       },
@@ -402,6 +402,7 @@ export function createHandlers(ctx) {
           if (!raw) return { errore: 'Serve l\'indirizzo del sito.' };
           url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`; label = `Apri ${raw.replace(/^https?:\/\//i, '')}`; break;
         }
+        case 'spotify': url = t ? `https://open.spotify.com/search/${t}` : 'https://open.spotify.com/'; label = t ? `Spotify: ${testo}` : 'Apri Spotify'; break;
         default: url = `https://www.google.com/search?q=${t}`; label = `Cerca: ${testo}`;
       }
       ctx.offerLink(label, url);

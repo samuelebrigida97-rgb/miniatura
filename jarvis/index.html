@@ -172,14 +172,23 @@
 
       <fieldset>
         <legend>Spotify (serve Premium)</legend>
+        <p id="s-spotify-status" class="help"></p>
         <label>Client ID
-          <input id="s-spotify" autocomplete="off" placeholder="dalla tua app su developer.spotify.com">
+          <input id="s-spotify" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="incollalo qui">
         </label>
-        <p class="help">Redirect URI da registrare nell'app Spotify:<br><code id="s-redirect"></code></p>
         <div class="row">
           <button type="button" id="s-spotify-connect" class="small">Collega Spotify</button>
-          <span id="s-spotify-status" class="help"></span>
         </div>
+        <details class="help">
+          <summary>Come ottenere il Client ID (una volta sola, 3 minuti)</summary>
+          <ol>
+            <li>Apri <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> ed entra con il tuo account Spotify.</li>
+            <li>Se hai già creato l'app «Jarvis»: aprila, tocca <b>Settings</b> e copia il <b>Client ID</b>. Altrimenti tocca <b>Create app</b>, dai un nome qualsiasi e spunta <b>Web API</b>.</li>
+            <li>Nel campo <b>Redirect URIs</b> deve esserci esattamente questo indirizzo (copialo da qui):<br><code id="s-redirect"></code></li>
+            <li>Salva, copia il <b>Client ID</b>, incollalo qui sopra e tocca <b>Collega Spotify</b>.</li>
+          </ol>
+          <p>Ogni browser va collegato una volta: se prima lo usavi con il browser Samsung e ora con Chrome, va rifatto solo l'ultimo passo.</p>
+        </details>
       </fieldset>
 
       <fieldset>

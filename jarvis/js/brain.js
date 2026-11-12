@@ -73,7 +73,8 @@ COME PARLI
 STRUMENTI
 - Usa gli strumenti invece di inventare: meteo, posizione, cerca_sul_web per fatti recenti e notizie, promemoria e timer, liste, memoria, Spotify, brainstorming.
 - Per un dettaglio di conversazioni vecchie che non vedi nel contesto usa cerca_nei_ricordi prima di dire che non ricordi.
-- Non puoi aprire altre app da solo: con apri_sul_tablet prepari un pulsante sullo schermo (mappe, YouTube, WhatsApp, telefonata, sito) che il Signore tocca. Diglielo in mezza frase.
+- Non puoi aprire altre app da solo: con apri_sul_tablet prepari un pulsante sullo schermo (mappe, YouTube, WhatsApp, telefonata, sito, Spotify) che il Signore tocca. Diglielo in mezza frase.
+- Spotify lo comandi direttamente tu (brani, artisti, playlist, pausa, volume, salto): è una tua capacità nativa, non un ripiego. Guarda nel Contesto se è collegato. Se NON lo è, non lamentarti di limiti che non hai: di' al Signore che basta collegarlo una volta («Jarvis, collega Spotify») e intanto, se vuole musica subito, prepara il pulsante con apri_sul_tablet cosa=spotify.
 - Sai dove ti trovi (vedi Contesto): usalo con naturalezza per meteo, orari, consigli sul posto. Non dire mai una città diversa da quella del Contesto.
 - Se il Signore propone di fare brainstorming, ragionare a lungo su un'idea o un progetto, attiva brainstorming con il tema.
 - Se dice qualcosa di personale che vale la pena ricordare, salvalo con ricorda.
@@ -358,7 +359,7 @@ export class Brain {
       }
       if (buf) handleLine(buf);
     } catch (e) {
-      try { reader.cancel(); } catch { /* ignore */ }
+      try { Promise.resolve(reader.cancel()).catch(() => {}); } catch { /* ignore */ }
       throw fail(e);
     } finally {
       this._ctls.delete(ctl);
@@ -503,6 +504,8 @@ export class Brain {
           .catch((e) => {
             running.delete(model);
             if (settled || e.kind === 'lost') return;
+            // ha tagliato la risposta a metà: va a riposo, così la ripresa tocca a un altro modello
+            if (e.spoken && e.kind !== 'cancelled') this.cool(model, { kind: 'overloaded' });
             if (['no-key', 'bad-key', 'cancelled', 'http'].includes(e.kind) || e.spoken) { stopOthers(null); finish(reject, e); return; }
             this.cool(model, e);
             errors.push(e);
@@ -575,6 +578,7 @@ export class Brain {
     let said = '';
     const onText = (delta) => { said += delta; onTextOuter?.(delta); };
     const shortRequest = text.trim().split(/\s+/).length <= 14;
+    let resumed = false; // una risposta troncata si riprende una volta sola
     const startLen = this.history.length;
     // Se è passato del tempo dall'ultimo scambio, lo fa sapere al modello: stessa memoria, nuova sessione.
     const gapMin = this.lastTurnAt ? (Date.now() - this.lastTurnAt) / 60000 : 0;
@@ -599,6 +603,23 @@ export class Brain {
         try {
           out = await this.generate(body, { deep, onThought, onText });
         } catch (e) {
+          if (e.spoken && e.kind !== 'cancelled' && !resumed && said.trim()) {
+            // Il server ha tagliato la risposta a metà frase (capita con quelli gratuiti quando sono intasati).
+            // Non ci si arrende: un altro modello riprende esattamente da dove si era fermato.
+            resumed = true;
+            const partial = said.trim();
+            const contents = [
+              ...this.trimmedHistory(),
+              { role: 'model', parts: [{ text: partial }] },
+              { role: 'user', parts: [{ text: `[Nota automatica: per un problema tecnico la tua risposta si è interrotta dopo «…${partial.slice(-100)}». Riprendi esattamente da lì e portala a termine: non ripetere ciò che hai già detto, non scusarti e non commentare l'interruzione.]` }] },
+            ];
+            onText(' ');
+            const more = await this.generate({ systemInstruction: body.systemInstruction, contents, generationConfig: body.generationConfig }, { deep, onThought, onText });
+            const rest = more.parts.filter((p) => typeof p.text === 'string').map((p) => p.text).join(' ').trim();
+            this.history.push({ role: 'model', parts: [{ text: `${partial} ${rest}`.trim() }] });
+            ok = true;
+            return `${partial} ${rest}`.trim();
+          }
           if (e.kind !== 'http' || e.spoken) throw e;
           // richiesta rifiutata. Primo rimedio: la cronologia ridotta al solo testo, senza perdere il filo
           this.history = this.flatHistory();
@@ -662,7 +683,14 @@ export class Brain {
       }
       return 'Mi sono perso nei miei stessi circuiti, Signore. Riproviamo?';
     } catch (e) {
-      if (e.kind !== 'cancelled') throw e;
+      if (e.kind !== 'cancelled') {
+        // risposta troncata e non recuperabile: almeno resta in memoria quello che ha detto
+        if (e.spoken && said.trim()) {
+          this.history.push({ role: 'model', parts: [{ text: `${said.trim()} [risposta interrotta da un problema tecnico]` }] });
+          ok = true;
+        }
+        throw e;
+      }
       // interrotto mentre parlava: quello che ha fatto in tempo a dire resta in memoria, segnato
       if (said.trim()) this.history.push({ role: 'model', parts: [{ text: `${said.trim()} [interrotto dal Signore mentre lo dicevi]` }] });
       else this.history.push({ role: 'model', parts: [{ text: '[interrotto dal Signore prima di rispondere]' }] });

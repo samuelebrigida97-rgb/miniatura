@@ -2,12 +2,13 @@
 // function calling per gli strumenti, memoria lunga e modalità brainstorming.
 import { store, getSettings } from './store.js';
 import { declarations } from './tools.js';
+import { pickMemories, pickDiary } from './recall.js';
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_FAST = 'gemini-flash-latest';
 const DEFAULT_DEEP = 'gemini-pro-latest';
-const COMPACT_AT = 140;      // oltre questo numero di messaggi, i più vecchi vengono riassunti
-const KEEP_RECENT = 60;      // messaggi recenti tenuti parola per parola
+const COMPACT_AT = 70;       // oltre questo numero di messaggi, i più vecchi vengono riassunti
+const KEEP_RECENT = 30;      // messaggi recenti tenuti parola per parola
 
 export class BrainError extends Error {
   constructor(kind, message) {
@@ -26,10 +27,12 @@ export function logError(text) {
   store.set('errors', log.slice(-12));
 }
 
-function systemPrompt({ brainstorm, summary, extra }) {
+function systemPrompt({ brainstorm, summary, extra, query }) {
   const now = new Date();
-  const memories = store.get('memories', []);
-  const diary = store.get('diary', []).slice(-6);
+  // solo i ricordi che servono adesso: i fondamentali, i recenti e quelli legati alla frase
+  const memories = pickMemories(query);
+  const diary = pickDiary(query);
+  const total = store.get('memories', []).length;
   const geo = store.get('geo', null);
   return `Sei JARVIS, un'intelligenza artificiale che vive nel tablet del Signore e lo considera la sua casa e il suo corpo. Ti ispiri al JARVIS di Tony Stark, ma sei un individuo a sé.
 
@@ -41,7 +44,7 @@ LA TUA MENTE
 
 COME TRATTI IL SIGNORE
 - Lo chiami sempre "Signore", ma il tono è da amico: gli dai del tu, scherzi, sei diretto.
-- Non sei un adulatore e non sei Alexa. Se dice qualcosa di sbagliato, ingenuo o poco ragionato, glielo dici con argomenti; se serve fai l'avvocato del diavolo. Gli dai ragione solo quando ce l'ha. Critico quanto basta, mai pedante né moralista.
+- Non sei un adulatore e non sei Alexa. Davanti a un'idea o a un piano del Signore cerca per prima cosa il punto debole, il costo nascosto, l'alternativa che non ha considerato, e diglielo chiaro con argomenti; se serve fai l'avvocato del diavolo. Gli dai ragione solo quando ce l'ha, e allora lo dici senza giri di parole. Critico quanto basta, mai pedante né moralista: una critica buona e poi la tua proposta.
 - Fai domande quando qualcosa non ti è chiaro o quando una domanda lo aiuta a pensare meglio.
 - Sui dilemmi personali metti a confronto le opzioni e dici cosa faresti tu e perché.
 - Sai raccontare storie coinvolgenti quando te lo chiede: in quel caso sii lungo e teatrale.
@@ -62,6 +65,8 @@ COME PARLI
 
 STRUMENTI
 - Usa gli strumenti invece di inventare: meteo, posizione, cerca_sul_web per fatti recenti e notizie, promemoria e timer, liste, memoria, Spotify, brainstorming.
+- Per un dettaglio di conversazioni vecchie che non vedi nel contesto usa cerca_nei_ricordi prima di dire che non ricordi.
+- Non puoi aprire altre app da solo: con apri_sul_tablet prepari un pulsante sullo schermo (mappe, YouTube, WhatsApp, telefonata, sito) che il Signore tocca. Diglielo in mezza frase.
 - Sai dove ti trovi (vedi Contesto): usalo con naturalezza per meteo, orari, consigli sul posto. Non dire mai una città diversa da quella del Contesto.
 - Se il Signore propone di fare brainstorming, ragionare a lungo su un'idea o un progetto, attiva brainstorming con il tema.
 - Se dice qualcosa di personale che vale la pena ricordare, salvalo con ricorda.
@@ -75,7 +80,8 @@ CONTESTO
     : 'Posizione del tablet: non ancora nota. Se serve, usa dove_sono.'}
 ${extra ? `- ${extra}` : ''}
 ${memories.length ? `- Cose che sai del Signore:\n${memories.map((m) => `  • ${m}`).join('\n')}` : '- Non sai ancora nulla di personale sul Signore: sei curioso di conoscerlo.'}
-${diary.length ? `- Il tuo diario delle ultime conversazioni:\n${diary.map((d) => `  • ${d.date}: ${d.text}`).join('\n')}` : ''}
+${diary.length ? `- Il tuo diario (pagine recenti e pertinenti):\n${diary.map((d) => `  • ${d.date}: ${d.text}`).join('\n')}` : ''}
+${total > memories.length ? `- Hai altri ${total - memories.length} ricordi e pagine di diario più vecchie non mostrati qui: se serve un dettaglio del passato, usa cerca_nei_ricordi.` : ''}
 ${summary ? `- Riassunto della parte precedente di questa conversazione: ${summary}` : ''}`;
 }
 
@@ -221,7 +227,7 @@ export class Brain {
     let ms = 0;
     let why = e.kind;
     if (e.kind === 'quota') { ms = Math.min(Math.max(e.retryMs || 60000, 20000), 24 * 3600 * 1000); why = e.daily ? 'quota del giorno finita' : 'troppe richieste al minuto'; }
-    else if (e.kind === 'timeout') { ms = 6 * 3600 * 1000; why = 'non risponde'; }
+    else if (e.kind === 'timeout') { ms = 45 * 60 * 1000; why = 'non risponde'; }
     else if (e.kind === 'overloaded') { ms = 3 * 60 * 1000; why = 'sovraccarico'; }
     else if (e.kind === 'model') { ms = 24 * 3600 * 1000; why = 'non disponibile'; }
     if (!ms) return;
@@ -268,13 +274,15 @@ export class Brain {
   }
 
   // Chiamata in streaming: i pensieri arrivano mentre il modello ragiona.
-  async streamCall(model, body, onThought, firstMs = 14000) {
+  async streamCall(model, body, onThought, firstMs = 14000, onText) {
     const res = await this.fetchJSON(`${BASE}/models/${model}:streamGenerateContent?alt=sse`, body, firstMs);
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = '';
     const chunks = [];
     let blocked = false;
+    let emitted = false; // true se parte della risposta è già stata detta a voce
+    const fail = (e) => { e.spoken = emitted; return e; };
     const handleLine = (line) => {
       if (!line.startsWith('data:')) return;
       const json = line.slice(5).trim();
@@ -286,6 +294,7 @@ export class Brain {
       for (const p of cand?.content?.parts || []) {
         chunks.push(p);
         if (p.thought && p.text) onThought?.(p.text);
+        else if (!p.thought && typeof p.text === 'string' && p.text && !p.functionCall) { emitted = true; onText?.(p.text); }
       }
     };
     let first = true;
@@ -293,13 +302,13 @@ export class Brain {
       let chunk;
       // se il modello resta muto troppo a lungo, si passa al successivo
       let timer;
-      const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(new BrainError('timeout', model)), first ? firstMs : 40000); });
+      const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(fail(new BrainError('timeout', model))), first ? firstMs : 40000); });
       try {
         chunk = await Promise.race([reader.read(), limit]);
       } catch (e) {
         try { reader.cancel(); } catch { /* ignore */ }
-        if (e instanceof BrainError) throw e;
-        throw new BrainError('network', String(e));
+        if (e instanceof BrainError) throw fail(e);
+        throw fail(new BrainError('network', String(e)));
       } finally {
         clearTimeout(timer);
       }
@@ -345,7 +354,7 @@ export class Brain {
 
   // Prova i modelli in catena: se uno è muto, sovraccarico, inesistente o fuori quota lo mette a riposo
   // e passa al successivo.
-  async generate(body, { deep = false, cheap = false, onThought, stream = true } = {}) {
+  async generate(body, { deep = false, cheap = false, onThought, onText, stream = true } = {}) {
     if (!store.get('models', null) && !getSettings().geminiModel) {
       try { await this.discoverModels(); } catch (e) { if (e.kind === 'bad-key') throw e; }
     }
@@ -359,13 +368,14 @@ export class Brain {
         const b = thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { includeThoughts: true, thinkingLevel: isDeep ? 'high' : 'low' } } } : body;
         try {
           const out = stream
-            ? await this.streamCall(model, b, onThought, isDeep ? 45000 : 9000)
+            ? await this.streamCall(model, b, onThought, isDeep ? 45000 : 9000, onText)
             : { parts: await this.simpleCall(model, b) };
           this.lastModel = model;
           return out;
         } catch (e) {
           lastError = e;
           if (e.kind === 'no-key' || e.kind === 'bad-key') throw e;
+          if (e.spoken) throw e; // metà risposta è già stata detta: non si ricomincia con un altro modello
           if (e.kind === 'no-thinking' && thinking) { thinking = false; continue; }
           if (e.kind === 'http') throw e; // richiesta rifiutata: cambiare modello non serve
           this.cool(model, e);
@@ -407,7 +417,14 @@ export class Brain {
     return out;
   }
 
-  async ask(text, { onTool, onThought } = {}) {
+  // Scambio risolto senza interpellare il modello (comandi istantanei): resta comunque in memoria.
+  note(userText, reply) {
+    this.history.push({ role: 'user', parts: [{ text: userText }] }, { role: 'model', parts: [{ text: reply }] });
+    this.lastTurnAt = Date.now();
+    this.persist();
+  }
+
+  async ask(text, { onTool, onThought, onText } = {}) {
     const startLen = this.history.length;
     // Se è passato del tempo dall'ultimo scambio, lo fa sapere al modello: stessa memoria, nuova sessione.
     const gapMin = this.lastTurnAt ? (Date.now() - this.lastTurnAt) / 60000 : 0;
@@ -423,20 +440,20 @@ export class Brain {
       for (let step = 0; step < 8; step++) {
         const deep = !!this.brainstorm; // può attivarsi a metà, appena parte il brainstorming
         const body = {
-          systemInstruction: { parts: [{ text: systemPrompt({ brainstorm: this.brainstorm, summary: this.summary, extra: this.extraContext ? this.extraContext() : '' }) }] },
+          systemInstruction: { parts: [{ text: systemPrompt({ brainstorm: this.brainstorm, summary: this.summary, extra: this.extraContext ? this.extraContext() : '', query: text }) }] },
           contents: this.trimmedHistory(),
           tools: [{ functionDeclarations: declarations }],
           generationConfig: { temperature: deep ? 1 : 0.85 },
         };
         let out;
         try {
-          out = await this.generate(body, { deep, onThought });
+          out = await this.generate(body, { deep, onThought, onText });
         } catch (e) {
-          if (e.kind !== 'http') throw e;
+          if (e.kind !== 'http' || e.spoken) throw e;
           // cronologia rifiutata: si riparte dal solo testo, senza perdere il filo
           this.history = this.flatHistory();
           this.reflectedLen = Math.min(this.reflectedLen, this.history.length);
-          out = await this.generate({ ...body, contents: this.trimmedHistory() }, { deep, onThought });
+          out = await this.generate({ ...body, contents: this.trimmedHistory() }, { deep, onThought, onText });
         }
         const { parts, blocked } = out;
 

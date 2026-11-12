@@ -1,6 +1,7 @@
 // Gli "strumenti" che il cervello può usare: meteo, ricerca web, promemoria, liste, memoria, Spotify.
 import { store, getSettings, saveSettings } from './store.js';
 import { spotify } from './spotify.js';
+import { searchEverything } from './recall.js';
 
 const WMO = {
   0: 'sereno', 1: 'prevalentemente sereno', 2: 'parzialmente nuvoloso', 3: 'coperto',
@@ -223,6 +224,24 @@ export const declarations = [
     parameters: { type: 'OBJECT', properties: { citta: S('STRING', 'Nome della città, oppure vuoto per tornare al GPS') }, required: ['citta'] },
   },
   {
+    name: 'cerca_nei_ricordi',
+    description: 'Cerca in tutta la tua memoria (ricordi sul Signore, diario, idee dei brainstorming, liste, conversazioni passate) i passaggi che parlano di un argomento. Usalo per recuperare dettagli vecchi che non hai sotto gli occhi.',
+    parameters: { type: 'OBJECT', properties: { argomento: S('STRING', 'Parole chiave di cosa cercare') }, required: ['argomento'] },
+  },
+  {
+    name: 'apri_sul_tablet',
+    description: 'Prepara sullo schermo un pulsante che, toccato dal Signore, apre un\'altra app o un sito: indicazioni stradali, video su YouTube, messaggio WhatsApp, telefonata, pagina web. Non si apre da solo: serve il suo tocco.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        cosa: S('STRING', 'Che cosa aprire', { enum: ['mappa', 'youtube', 'whatsapp', 'telefonata', 'sito', 'ricerca'] }),
+        testo: S('STRING', 'Destinazione o luogo (mappa), cosa cercare (youtube, ricerca), testo del messaggio (whatsapp), indirizzo web (sito)'),
+        numero: S('STRING', 'Numero di telefono con prefisso internazionale, per whatsapp e telefonata'),
+      },
+      required: ['cosa'],
+    },
+  },
+  {
     name: 'vai_a_riposo',
     description: 'Modalità notte: spegne l\'ascolto e oscura lo schermo finché il Signore non lo tocca. Usalo quando dice buonanotte, vai a dormire, o chiede silenzio per la notte. Saluta in una frase.',
   },
@@ -358,6 +377,35 @@ export function createHandlers(ctx) {
       const loc = await locate(null, { force: true });
       ctx.onLocationChanged();
       return { ok: true, citta: loc.name, regione: loc.region, fonte: loc.source };
+    },
+
+    async cerca_nei_ricordi({ argomento }) {
+      const trovati = searchEverything(argomento, brainRef ? brainRef.history.slice(0, -1) : [], brainRef ? brainRef.summary : '');
+      return trovati.length ? { trovati } : { trovati: [], nota: 'Nessun ricordo su questo argomento.' };
+    },
+
+    async apri_sul_tablet({ cosa, testo = '', numero = '' }) {
+      const t = encodeURIComponent(String(testo).trim());
+      const n = String(numero).replace(/[^\d+]/g, '');
+      let url; let label;
+      switch (cosa) {
+        case 'mappa': url = `https://www.google.com/maps/dir/?api=1&destination=${t}`; label = `Indicazioni per ${testo}`; break;
+        case 'youtube': url = `https://www.youtube.com/results?search_query=${t}`; label = `YouTube: ${testo}`; break;
+        case 'whatsapp':
+          if (!n) return { errore: 'Per WhatsApp serve il numero con prefisso internazionale.' };
+          url = `https://wa.me/${n.replace('+', '')}${t ? `?text=${t}` : ''}`; label = `WhatsApp a ${numero}`; break;
+        case 'telefonata':
+          if (!n) return { errore: 'Serve il numero di telefono.' };
+          url = `tel:${n}`; label = `Chiama ${numero}`; break;
+        case 'sito': {
+          const raw = String(testo).trim();
+          if (!raw) return { errore: 'Serve l\'indirizzo del sito.' };
+          url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`; label = `Apri ${raw.replace(/^https?:\/\//i, '')}`; break;
+        }
+        default: url = `https://www.google.com/search?q=${t}`; label = `Cerca: ${testo}`;
+      }
+      ctx.offerLink(label, url);
+      return { ok: true, nota: 'Pulsante pronto sullo schermo: il Signore deve toccarlo. Quando esce da Jarvis, l\'ascolto si ferma finché non torna.' };
     },
 
     async vai_a_riposo() {

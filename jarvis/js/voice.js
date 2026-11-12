@@ -232,62 +232,115 @@ export class Mouth {
     return out;
   }
 
-  speak(text) {
-    if (!this.synth || !text) return Promise.resolve();
+  // Voce "in diretta": si possono passare pezzi di testo mentre arrivano (push) e Jarvis
+  // comincia a parlare alla prima frase completa, senza aspettare tutta la risposta.
+  stream() {
+    if (!this.synth) return { push() {}, end: () => Promise.resolve() };
     const wasBusy = this.synth.speaking || this.synth.pending;
     this.cancel();
     try { this.synth.resume(); } catch { /* ignore */ } // Android a volte resta "in pausa"
     const token = ++this._token;
     const { rate, pitch } = getSettings();
     const voice = this.pickVoice();
-    const pieces = this.chunks(text);
     this.speaking = true;
     this.onStart();
 
-    return new Promise((resolve) => {
-      let i = 0;
-      const finish = () => {
-        if (token !== this._token) return resolve();
-        this.speaking = false;
-        this.onEnd();
-        resolve();
-      };
-      const next = () => {
-        if (token !== this._token) return resolve();
-        if (i >= pieces.length) return finish();
-        const piece = pieces[i++];
-        let guard;
-        try {
-          const u = new SpeechSynthesisUtterance(piece);
-          u.lang = 'it-IT';
-          try { if (voice) u.voice = voice; } catch { /* voce non valida: usa quella di sistema */ }
-          u.rate = Number(rate) || 1;
-          u.pitch = Number(pitch) || 1;
-          // rete di sicurezza: a volte Android non chiama onend
-          guard = setTimeout(() => {
-            u.onend = null; u.onerror = null;
-            if (!heard) this.problem('la sintesi vocale non ha dato segni di vita (volume a zero, o voce italiana non installata?)');
-            next();
-          }, piece.length * 110 + 4000);
-          let heard = false;
-          u.onstart = () => { heard = true; this.lastProblem = ''; };
-          u.onend = () => { clearTimeout(guard); next(); };
-          u.onerror = (ev) => {
-            clearTimeout(guard);
-            if (ev && ev.error && ev.error !== 'interrupted' && ev.error !== 'canceled') this.problem(`errore della sintesi vocale: ${ev.error}`);
-            next();
-          };
-          this._current = u; // tiene vivo l'oggetto: altrimenti Chrome può non chiamare onend
-          this.synth.speak(u);
-        } catch {
-          // la voce non deve mai bloccare Jarvis: se qualcosa va storto si prosegue in silenzio
+    const queue = [];
+    let buf = '';
+    let ended = false;
+    let playing = false;
+    let started = false;
+    let resolveEnd;
+    const done = new Promise((r) => { resolveEnd = r; });
+    const finish = () => {
+      if (token === this._token) { this.speaking = false; this.onEnd(); }
+      resolveEnd();
+    };
+
+    const utter = (piece, next) => {
+      let guard;
+      try {
+        const u = new SpeechSynthesisUtterance(piece);
+        u.lang = 'it-IT';
+        try { if (voice) u.voice = voice; } catch { /* voce non valida: usa quella di sistema */ }
+        u.rate = Number(rate) || 1;
+        u.pitch = Number(pitch) || 1;
+        let heard = false;
+        // rete di sicurezza: a volte Android non chiama onend
+        guard = setTimeout(() => {
+          u.onend = null; u.onerror = null;
+          if (!heard) this.problem('la sintesi vocale non ha dato segni di vita (volume a zero, o voce italiana non installata?)');
+          next();
+        }, piece.length * 110 + 4000);
+        u.onstart = () => { heard = true; this.lastProblem = ''; };
+        u.onend = () => { clearTimeout(guard); next(); };
+        u.onerror = (ev) => {
           clearTimeout(guard);
-          finish();
-        }
-      };
+          if (ev && ev.error && ev.error !== 'interrupted' && ev.error !== 'canceled') this.problem(`errore della sintesi vocale: ${ev.error}`);
+          next();
+        };
+        this._current = u; // tiene vivo l'oggetto: altrimenti Chrome può non chiamare onend
+        this.synth.speak(u);
+      } catch {
+        // la voce non deve mai bloccare Jarvis: se qualcosa va storto si prosegue in silenzio
+        clearTimeout(guard);
+        next();
+      }
+    };
+
+    const pump = () => {
+      if (token !== this._token) return resolveEnd(); // interrotto
+      if (playing) return;
+      if (!queue.length) { if (ended) finish(); return; }
+      let piece = queue.shift();
+      while (queue.length && `${piece} ${queue[0]}`.length <= 180) piece += ` ${queue.shift()}`;
+      playing = true;
+      utter(piece, () => { playing = false; pump(); });
+    };
+    const kick = () => {
       // dopo un cancel() Android ha bisogno di un attimo, o si mangia la prima frase
-      if (wasBusy) setTimeout(next, 150); else next();
-    });
+      if (!started) { started = true; if (wasBusy) { setTimeout(pump, 150); return; } }
+      pump();
+    };
+
+    const clean = (t) => t.replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
+    // sposta in coda le frasi complete (finite da punteggiatura e seguite da uno spazio)
+    const split = (final) => {
+      const re = /^([\s\S]*?[.!?…:;]+["»)\]]*)(\s+|$)/;
+      let m;
+      while ((m = buf.match(re)) && (final || m[2].length > 0)) {
+        const sentence = clean(m[1]);
+        buf = buf.slice(m[0].length);
+        if (sentence) queue.push(...this.chunks(sentence));
+      }
+      if (final) {
+        const rest = clean(buf);
+        buf = '';
+        if (rest) queue.push(...this.chunks(rest));
+      }
+    };
+
+    return {
+      push: (delta) => {
+        if (token !== this._token || !delta) return;
+        buf += delta;
+        split(false);
+        if (queue.length) kick();
+      },
+      end: () => {
+        split(true);
+        ended = true;
+        kick();
+        return done;
+      },
+    };
+  }
+
+  speak(text) {
+    if (!this.synth || !text) return Promise.resolve();
+    const s = this.stream();
+    s.push(text);
+    return s.end();
   }
 
   problem(text) {

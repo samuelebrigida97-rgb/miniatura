@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.5';
+const JARVIS_VERSION = '3.6';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -602,7 +602,8 @@ function errorMessage(e) {
     case 'timeout': return 'Il mio cervello remoto non risponde in questo momento, Signore. Riprova tra poco.';
     case 'overloaded': return 'I server di Google sono sovraccarichi, Signore. Riprova tra poco.';
     case 'network': return 'Non riesco a raggiungere la rete, Signore. Controlla il Wi-Fi.';
-    default: return 'Il mio cervello remoto ha avuto un singhiozzo, Signore. Riprova.';
+    // caso raro: lo dice con il codice, così chi lo ha costruito capisce subito cosa è successo
+    default: return `Google ha rifiutato la mia richiesta, Signore. Codice ${String(e.kind)}${/^\d{3}/.test(e.message || '') ? ` ${e.message.slice(0, 3)}` : ''}, versione ${JARVIS_VERSION}. Riprova; se continua, nelle impostazioni premi Dimentica la conversazione.`;
   }
 }
 

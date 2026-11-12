@@ -105,27 +105,21 @@ function modelRank(name) {
 // I pensieri (thought) vanno mostrati ma non salvati; le firme (thoughtSignature) vanno preservate.
 function assemble(chunks, onThought) {
   const parts = [];
-  let pendingSig = null;
   for (const p of chunks) {
     if (p.thought) {
       if (p.text) onThought?.(p.text);
-      if (p.thoughtSignature) pendingSig = p.thoughtSignature;
       continue;
     }
-    const sig = p.thoughtSignature || pendingSig;
-    pendingSig = null;
     if (p.functionCall) {
-      parts.push(sig ? { ...p, thoughtSignature: sig } : p);
+      // la "firma" del ragionamento va restituita a Google identica e solo sulla chiamata a cui appartiene
+      parts.push(p.thoughtSignature ? { functionCall: p.functionCall, thoughtSignature: p.thoughtSignature } : { functionCall: p.functionCall });
       continue;
     }
-    if (typeof p.text === 'string') {
+    if (typeof p.text === 'string' && p.text) {
+      // il testo viene unito in un pezzo solo e salvato senza firme: così non possono rovinarsi
       const last = parts[parts.length - 1];
-      if (last && typeof last.text === 'string' && !last.functionCall) {
-        last.text += p.text;
-        if (sig && !last.thoughtSignature) last.thoughtSignature = sig;
-      } else {
-        parts.push(sig ? { text: p.text, thoughtSignature: sig } : { text: p.text });
-      }
+      if (last && typeof last.text === 'string') last.text += p.text;
+      else parts.push({ text: p.text });
     }
   }
   return parts;
@@ -422,7 +416,10 @@ export class Brain {
     }
     const daily = errors.find((e) => e.kind === 'quota' && e.daily);
     if (daily) return daily;
-    return errors.find((e) => e.kind === 'quota') || errors[errors.length - 1];
+    const quota = errors.find((e) => e.kind === 'quota');
+    if (quota) return quota;
+    if (kinds.every((k) => k === 'model')) return errors[0];
+    return new BrainError('busy', `nessun modello ha risposto: ${kinds.join(', ')}`);
   }
 
   // Una richiesta a un modello, con il ragionamento acceso (o spento se quel modello non lo supporta).
@@ -603,10 +600,23 @@ export class Brain {
           out = await this.generate(body, { deep, onThought, onText });
         } catch (e) {
           if (e.kind !== 'http' || e.spoken) throw e;
-          // cronologia rifiutata: si riparte dal solo testo, senza perdere il filo
+          // richiesta rifiutata. Primo rimedio: la cronologia ridotta al solo testo, senza perdere il filo
           this.history = this.flatHistory();
           this.reflectedLen = Math.min(this.reflectedLen, this.history.length);
-          out = await this.generate({ ...body, contents: this.trimmedHistory() }, { deep, onThought, onText });
+          try {
+            out = await this.generate({ ...body, contents: this.trimmedHistory() }, { deep, onThought, onText });
+          } catch (e2) {
+            if (e2.kind !== 'http' || e2.spoken) throw e2;
+            // Ultimo rimedio: solo la domanda di adesso, senza strumenti. Meglio una risposta semplice che nessuna.
+            out = await this.generate({
+              systemInstruction: body.systemInstruction,
+              contents: [{ role: 'user', parts: [{ text }] }],
+              generationConfig: body.generationConfig,
+            }, { deep, onThought, onText });
+            // la conversazione salvata era il problema: si riparte da questa domanda, i ricordi e il diario restano
+            this.history = [{ role: 'user', parts: [{ text }] }];
+            this.reflectedLen = 0;
+          }
         }
         const { parts, blocked } = out;
 

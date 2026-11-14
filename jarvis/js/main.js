@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.10';
+const JARVIS_VERSION = '3.11';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -125,18 +125,43 @@ function sys(id, on, warn = false) {
   el.classList.toggle('warn', !!warn);
 }
 
-let typeTimer;
-function showJarvis(text) {
+// La risposta di Jarvis resta tutta a schermo: quello che ha già detto si attenua, la frase che sta
+// dicendo è evidenziata e il riquadro la segue scorrendo. Si può anche scorrere col dito per rileggere.
+let typeTimer; // (storico: non più usato, resta per compatibilità con chi lo azzera)
+const subtitle = { full: '', from: 0, to: 0 };
+const cleanSpeech = (t) => String(t || '').replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim();
+
+function renderJarvis() {
   const el = $('sub-jarvis');
-  clearInterval(typeTimer);
+  const { full, from, to } = subtitle;
   el.textContent = '';
-  let i = 0;
-  typeTimer = setInterval(() => {
-    i += 2;
-    el.textContent = text.slice(0, i);
-    el.scrollTop = el.scrollHeight; // mostra sempre l'ultima parte
-    if (i >= text.length) clearInterval(typeTimer);
-  }, 28);
+  const add = (cls, text) => { if (!text) return null; const sp = document.createElement('span'); sp.className = cls; sp.textContent = text; el.append(sp); return sp; };
+  add('said', full.slice(0, from));
+  const now = add('now', full.slice(from, to));
+  add('next', full.slice(to));
+  el.classList.toggle('long', full.length > 170);
+  // segue la frase in corso; se non c'è (testo ancora in arrivo) resta in fondo
+  if (now) el.scrollTop = Math.max(0, now.offsetTop - el.offsetTop - el.clientHeight / 3);
+  else el.scrollTop = el.scrollHeight;
+}
+
+function setJarvisText(text) {
+  subtitle.full = cleanSpeech(text);
+  if (subtitle.to > subtitle.full.length) { subtitle.from = 0; subtitle.to = 0; }
+  renderJarvis();
+}
+
+function showJarvis(text) {
+  subtitle.from = 0; subtitle.to = 0;
+  setJarvisText(text);
+}
+
+// chiamata dalla voce ogni volta che comincia una frase
+function markSpeaking(piece) {
+  const at = subtitle.full.indexOf(piece, Math.max(0, subtitle.to - 2));
+  if (at < 0) return;
+  subtitle.from = at; subtitle.to = at + piece.length;
+  renderJarvis();
 }
 
 function showUser(text) {
@@ -188,6 +213,7 @@ const mouth = new Mouth({
   onStart: () => setMode('speaking'),
   onEnd: () => {},
 });
+mouth.onSpeak = (piece) => markSpeaking(piece);
 mouth.onProblem = (text) => { logError(`voce: ${text}`); sys('sys-voice', true, true); };
 // il primo tocco sullo schermo sblocca la voce (necessario su iPhone)
 document.addEventListener('pointerdown', () => {
@@ -262,6 +288,7 @@ const handlers = createHandlers({
   onLocationChanged: () => refreshWeather(),
   rest: () => { state.restAfterReply = true; },
   musicStarted: () => { if (!brain.brainstorm) state.endAfterReply = true; },
+  pendPlay: (q, type) => pendPlay(q, type),
   offerLink: (label, url) => {
     const a = $('btn-open');
     a.textContent = `${label.toUpperCase()} · TOCCA`;
@@ -272,6 +299,42 @@ const handlers = createHandlers({
   },
 });
 const offerLink = {};
+
+// Musica chiesta mentre l'app Spotify era chiusa: resta in sospeso e parte da sola al ritorno.
+let pendingPlay = null;
+function pendPlay(q, type) {
+  pendingPlay = { q, type, ts: Date.now() };
+  const a = $('btn-open');
+  a.textContent = 'APRI SPOTIFY · TOCCA';
+  a.href = 'https://open.spotify.com/';
+  a.hidden = false;
+  clearTimeout(offerLink.timer);
+  offerLink.timer = setTimeout(() => { a.hidden = true; }, 180000);
+}
+async function resumePendingPlay() {
+  if (!pendingPlay || state.busy || state.mode === 'off') return;
+  const job = pendingPlay;
+  if (Date.now() - job.ts > 5 * 60000) { pendingPlay = null; return; }
+  pendingPlay = null;
+  run(async () => {
+    // l'app appena aperta impiega qualche secondo a farsi vedere da Spotify
+    for (let i = 0; i < 4; i++) {
+      try {
+        const r = await spotify.play(job.q, job.type);
+        $('btn-open').hidden = true;
+        setTimeout(refreshMusic, 1500);
+        await say(r.ok ? `Ecco ${r.in_riproduzione}.` : r.messaggio);
+        if (r.ok && !brain.brainstorm) endConversation();
+        return;
+      } catch (e) {
+        if (!e.noDevice) { await say(`Spotify non mi ha dato retta, Signore: ${e.message}`); return; }
+        await new Promise((res) => setTimeout(res, 1800));
+      }
+    }
+    pendingPlay = job; // ancora niente: resta in sospeso per il prossimo ritorno
+    await say('Spotify non risulta ancora aperto, Signore. Fai partire un brano qualsiasi dall\'app e torna qui: poi ci penso io.');
+  });
+}
 const brain = new Brain(handlers);
 bindBrain(brain);
 
@@ -310,7 +373,7 @@ async function say(text) {
   if (wasListening) await new Promise((r) => setTimeout(r, 200)); // Android restituisce l'audio con un attimo di ritardo
   try {
     const done = mouth.speak(text);
-    if (text.length > 60) barge.start(); // orecchio leggero per l'interruzione, solo sulle frasi lunghe
+    if (text.length > 25) barge.start(); // orecchio leggero per l'interruzione (non sulle risposte di due parole)
     await done;
   } catch (e) {
     logError(`voce: ${e && e.message ? e.message : e}`);
@@ -484,7 +547,65 @@ async function run(task) {
 
 function numberWords(n) { return String(n); }
 
+// ---------- rapporto per Claude ----------
+// Jarvis non può (e non deve) farsi modificare il codice da solo. Può però preparare un rapporto tecnico
+// completo che il Signore manda a Claude con un tocco, invece di descrivere il problema a parole.
+function buildReport(note) {
+  const s = getSettings();
+  const m = store.get('models', null);
+  const geo = knownLocation();
+  const errs = store.get('errors', []);
+  const last = brain.history.filter((h) => h.parts.some((p) => typeof p.text === 'string' && p.text.trim())).slice(-4)
+    .map((h) => `${h.role === 'user' ? 'Signore' : 'Jarvis'}: ${h.parts.filter((p) => p.text).map((p) => p.text).join(' ').slice(0, 220)}`);
+  return [
+    'RAPPORTO DI JARVIS PER CLAUDE',
+    note ? `Problema segnalato: ${note}` : 'Problema segnalato: (nessuna descrizione)',
+    '',
+    `Versione ${JARVIS_VERSION} · ${deviceName()} · ${STANDALONE ? 'aperto dall\'icona' : 'aperto nel browser'} · ${new Date().toLocaleString('it-IT')}`,
+    `Browser: ${navigator.userAgent.slice(0, 140)}`,
+    `Cervello: chiave ${s.geminiKey ? 'presente' : 'ASSENTE'} · modello in uso ${brain.lastModel || '-'} · in fila ${m ? brain.chain().slice(0, 3).join(', ') : '-'}`,
+    `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why})`).join('; ') || 'nessuno'}`,
+    `Udito: ${ears.supported ? 'supportato' : 'NON supportato'}${ears.needsTap ? ', serve un tocco' : ''}${ears.fatal ? ', permesso negato' : ''} · ultima frase sentita: ${state.lastHeard || '-'}`,
+    `Voce: ${mouth.lastProblem || 'nessun problema'} · voci italiane ${mouth.italianVoices().length}`,
+    `Interruzione: ${bargeMode()} · tarata ${s.voiceLevel ? `sì (voce ${Math.round(s.voiceLevel * 1000)}, stanza ${Math.round((s.roomLevel || 0) * 1000)})` : 'no'} · scattata ${barge.triggers} volte · attenuazione x${barge.boost.toFixed(1)}${barge.lastError ? ` · errore ${barge.lastError}` : ''} · «c'è gente» ${s.strictWake ? 'sì' : 'no'}`,
+    `Spotify: ${spotify.isConnected() ? 'collegato' : 'NON collegato'} · Client ID ${s.spotifyClientId ? (clientIdProblem(s.spotifyClientId) ? 'formato sbagliato' : 'formato giusto') : 'assente'}${store.get('spotifyLastError', '') ? ` · ultimo errore: ${store.get('spotifyLastError', '')}` : ''} · redirect ${redirectUri()}`,
+    `Posizione: ${geo ? `${geo.name} (${geo.source})` : 'non rilevata'} · Batteria: ${body.battery ? `${Math.round(body.battery.level * 100)}%` : '-'} · Schermo acceso: ${screenAwake}`,
+    `Memoria: ${brain.remembered()} scambi, ${store.get('memories', []).length} ricordi, ${store.get('diary', []).length} pagine di diario`,
+    '',
+    'Ultimi errori:',
+    ...(errs.length ? errs.map((e) => `  ${e.t}  ${String(e.text).slice(0, 220)}`) : ['  nessuno']),
+    '',
+    'Ultimi scambi:',
+    ...(last.length ? last.map((l) => `  ${l}`) : ['  nessuno']),
+  ].join('\n');
+}
+
+let reportText = '';
+function offerReport(note) {
+  reportText = buildReport(note);
+  $('btn-report').hidden = false;
+  clearTimeout(offerReport.timer);
+  offerReport.timer = setTimeout(() => { $('btn-report').hidden = true; }, 180000);
+}
+async function sendReport() {
+  if (!reportText) reportText = buildReport('');
+  $('btn-report').hidden = true;
+  try {
+    if (navigator.share) { await navigator.share({ title: 'Rapporto di Jarvis', text: reportText }); return 'condiviso'; }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return 'annullato';
+  }
+  try { await navigator.clipboard.writeText(reportText); return 'copiato'; } catch { return 'manuale'; }
+}
+
 async function quickCommand(raw) {
+  // «Jarvis, segnala a Claude che …»: prepara il rapporto (qui la frase può essere lunga)
+  const rep = raw.toLowerCase().replace(/\s+/g, ' ').trim().match(/^(?:ehi |ok )?(?:segnala|segnalalo|riferisci|riporta|manda(?: un| il)? rapporto|fai(?: un| il)? rapporto|dillo|scrivi)(?: (?:questo|tutto|il problema|un rapporto))? a (?:claude|cloud|clod|l'architetto|architetto)(?:[ ,:]+(?:che |di )?(.+))?$/);
+  if (rep) {
+    offerReport(rep[1] ? raw.trim().slice(raw.trim().length - rep[1].length) : '');
+    return 'Rapporto pronto, Signore: versione, stato dei sistemi, ultimi errori e ultimi scambi. Tocca il pulsante dorato e scegli l\'app di Claude: così non devi spiegargli niente a parole.';
+  }
+
   const t = raw.toLowerCase().replace(/[.,!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim()
     .replace(/^(ehi |hey |ok |per favore |senti |dai )+/, '').replace(/( per favore| grazie| jarvis)+$/, '').trim();
   if (!t || t.split(' ').length > 7) return null;
@@ -553,7 +674,14 @@ async function quickCommand(raw) {
         else if (/^(?:i|gli|le|il|lo|la)\s+\S+$/.test(q)) { type = 'artist'; q = q.replace(/^(?:i|gli|le|il|lo|la)\s+/, ''); }
         else q = q.replace(/^(?:la canzone|il brano|il pezzo|la traccia)\s+/, '');
         if (q) {
-          const r = await spotify.play(q, type);
+          let r;
+          try {
+            r = await spotify.play(q, type);
+          } catch (e) {
+            if (!e.noDevice) throw e;
+            pendPlay(q, type);
+            return 'L\'app Spotify è chiusa, Signore. Tocca il pulsante dorato per aprirla: appena torni qui la musica la faccio partire io.';
+          }
           setTimeout(refreshMusic, 1500);
           // parte la musica: Jarvis si fa da parte (volume pieno) e torna in attesa di «Jarvis»
           if (r.ok && !brain.brainstorm) state.endAfterReply = true;
@@ -617,10 +745,10 @@ function handle(text) {
             clearInterval(typeTimer);
             live = mouth.stream(); // il microfono è già spento da quando è partita la richiesta
           }
+          if (!spoken) { subtitle.from = 0; subtitle.to = 0; }
           spoken += delta;
-          if (!bargeOn && spoken.length > 60) { bargeOn = true; barge.start(); }
-          jarvisEl.textContent = spoken.replace(/[*_#`]/g, '');
-          jarvisEl.scrollTop = jarvisEl.scrollHeight;
+          if (!bargeOn && spoken.length > 25) { bargeOn = true; barge.start(); } // pronto a essere interrotto quasi subito
+          setJarvisText(spoken);
           live.push(delta);
         },
       });
@@ -798,7 +926,7 @@ $('btn-talk').addEventListener('click', () => { if (!state.busy && state.mode !=
 // Un tocco in qualsiasi punto dello schermo mentre parla (o pensa) lo ferma.
 document.addEventListener('click', (ev) => {
   if (state.mode !== 'speaking' && state.mode !== 'thinking') return;
-  if (ev.target.closest('.buttons, dialog, .open-link, .chrome, .update, form')) return;
+  if (ev.target.closest('.buttons, dialog, .open-link, .chrome, .update, form, .voice-chip')) return;
   interrupt('tocco');
 });
 
@@ -1013,6 +1141,20 @@ $('s-calibrate').addEventListener('click', () => {
   if (state.busy) return;
   $('settings').close();
   run(async () => { const msg = await calibrate(); await say(msg); });
+});
+
+$('btn-report').addEventListener('click', async () => {
+  const how = await sendReport();
+  if (how === 'copiato') showJarvis('Rapporto copiato, Signore: apri la chat con Claude e incollalo.');
+  if (how === 'manuale') { openSettings(); $('s-diag').textContent = reportText; }
+});
+$('s-report').addEventListener('click', async () => {
+  reportText = buildReport($('s-report-note').value.trim());
+  const how = await sendReport();
+  $('s-test-result').textContent = how === 'condiviso' ? 'Rapporto passato all\'app scelta.'
+    : how === 'copiato' ? 'Rapporto copiato: apri la chat con Claude e incollalo.'
+      : how === 'annullato' ? 'Annullato.' : 'Non riesco a copiarlo da solo: il rapporto è qui sotto, selezionalo e copialo.';
+  if (how === 'manuale') $('s-diag').textContent = reportText;
 });
 
 $('s-clear-errors').addEventListener('click', () => { store.remove('errors'); fillDiag(); });
@@ -1247,6 +1389,7 @@ document.addEventListener('visibilitychange', () => {
     refreshWeather();
     refreshMusic();
     if (!state.busy) listenAgain();
+    if (pendingPlay) setTimeout(resumePendingPlay, 1200); // era andato ad aprire Spotify: ora la musica parte
   }
 });
 

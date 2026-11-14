@@ -179,15 +179,26 @@
         <div class="row">
           <button type="button" id="s-spotify-connect" class="small">Collega Spotify</button>
         </div>
-        <details class="help">
-          <summary>Come ottenere il Client ID (una volta sola, 3 minuti)</summary>
+        <p class="help">Indirizzo di ritorno (Redirect URI) che deve stare nella tua app Spotify, identico:<br><code id="s-redirect"></code></p>
+        <div class="row"><button type="button" id="s-redirect-copy" class="small ghost">Copia indirizzo</button></div>
+        <details class="help" open>
+          <summary>Se Spotify mostra un errore invece della richiesta di permesso</summary>
+          <p>Apri <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a>, tocca la tua app e poi <b>Settings</b>. Controlla tre cose:</p>
           <ol>
-            <li>Apri <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> ed entra con il tuo account Spotify.</li>
-            <li>Se hai già creato l'app «Jarvis»: aprila, tocca <b>Settings</b> e copia il <b>Client ID</b>. Altrimenti tocca <b>Create app</b>, dai un nome qualsiasi e spunta <b>Web API</b>.</li>
-            <li>Nel campo <b>Redirect URIs</b> deve esserci esattamente questo indirizzo (copialo da qui):<br><code id="s-redirect"></code></li>
-            <li>Salva, copia il <b>Client ID</b>, incollalo qui sopra e tocca <b>Collega Spotify</b>.</li>
+            <li><b>Redirect URIs</b>: deve esserci l'indirizzo qui sopra, uguale carattere per carattere, compresa la barra <code>/</code> finale. Dopo averlo incollato tocca <b>Add</b> e poi <b>Save</b> in fondo alla pagina: senza Save non viene registrato.</li>
+            <li><b>Client ID</b>: copialo da quella pagina (non il «Client secret») e incollalo qui sopra.</li>
+            <li><b>APIs used</b>: deve essere spuntato <b>Web API</b>.</li>
           </ol>
-          <p>Ogni browser va collegato una volta: se prima lo usavi con il browser Samsung e ora con Chrome, va rifatto solo l'ultimo passo.</p>
+          <p>Errori tipici di Spotify: «Invalid redirect URI» = punto 1; «Invalid client» = punto 2.</p>
+        </details>
+        <details class="help">
+          <summary>Non ho ancora creato l'app su Spotify</summary>
+          <ol>
+            <li>Su <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> entra con il tuo account Spotify e tocca <b>Create app</b>.</li>
+            <li>Nome e descrizione a piacere. In <b>Redirect URIs</b> incolla l'indirizzo qui sopra e tocca <b>Add</b>. Spunta <b>Web API</b>. Tocca <b>Save</b>.</li>
+            <li>Apri l'app appena creata → <b>Settings</b> → copia il <b>Client ID</b>, incollalo qui sopra e tocca <b>Collega Spotify</b>.</li>
+          </ol>
+          <p>Ogni browser va collegato una volta sola. Serve Spotify Premium.</p>
         </details>
       </fieldset>
 

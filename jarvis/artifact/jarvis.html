@@ -94,6 +94,11 @@
   button { font: 700 13px/1 var(--display); letter-spacing: 0.15em; }
   .typer button, .small { background: rgba(0,120,190,0.25); border: 1px solid var(--cyan-dim); color: var(--cyan); padding: 10px 14px; cursor: pointer; }
 
+  .full-link {
+    position: absolute; left: 50%; top: 44px; transform: translateX(-50%); pointer-events: auto; white-space: nowrap;
+    padding: 10px 16px; border: 1px solid var(--gold); color: var(--gold); background: rgba(40, 30, 0, 0.7);
+    font: 700 11px/1 var(--display); letter-spacing: 0.14em; text-decoration: none; z-index: 11;
+  }
   .relisten {
     position: absolute; left: 50%; transform: translateX(-50%); bottom: 110px;
     padding: 14px 22px; border: 1px solid var(--gold); color: var(--gold); background: rgba(40,30,0,0.5);
@@ -109,6 +114,7 @@
   .boot-btn { width: 150px; height: 150px; border-radius: 50%; border: 2px solid var(--cyan); color: #fff; font-size: 18px; letter-spacing: 0.3em; cursor: pointer;
     background: radial-gradient(circle, rgba(70,200,255,0.35), rgba(0,40,70,0.3) 70%);
     box-shadow: 0 0 40px rgba(70,200,255,0.5), inset 0 0 30px rgba(70,200,255,0.4); animation: breathe 2.4s ease-in-out infinite; }
+  .boot-full { color: var(--gold); text-decoration: underline; }
   .boot-hint { margin-top: 30px; color: var(--cyan-dim); font-size: 15px; line-height: 1.5; }
   @keyframes breathe { 50% { transform: scale(1.06); } }
   @media (prefers-reduced-motion: reduce) { .boot-btn, .relisten { animation: none; } .thought { animation: none; } }
@@ -153,6 +159,7 @@
 
     <div id="thoughts" class="thoughts"></div>
     <div class="title">J.A.R.V.I.S.</div>
+    <a class="full-link" href="https://samuelebrigida97-rgb.github.io/miniatura/jarvis/" target="_blank" rel="noopener">VERSIONE RIDOTTA · APRI IL JARVIS COMPLETO</a>
     <div id="status" class="status">SISTEMI OFFLINE</div>
 
     <div class="subs">
@@ -178,6 +185,7 @@
       <div class="boot-title">J.A.R.V.I.S.</div>
       <div class="boot-sub">Just A Rather Very Intelligent System</div>
       <button id="btn-boot" class="boot-btn">ATTIVA</button>
+      <div class="boot-hint"><a class="boot-full" href="https://samuelebrigida97-rgb.github.io/miniatura/jarvis/" target="_blank" rel="noopener">Questa è la versione ridotta, senza impostazioni, meteo e Spotify. Tocca qui per aprire il Jarvis completo.</a></div>
       <div id="boot-hint" class="boot-hint">Tocca per accendere. Ti chiederà il permesso per il microfono e per usare Claude: rispondi Consenti a entrambi.</div>
     </div>
   </div>
@@ -438,22 +446,55 @@ ${d.chat.summary ? `- Riassunto della parte precedente di questa conversazione: 
 Rispondi solo con le parole che Jarvis dice ad alta voce.`;
 }
 const brain = { sample: null, ctl: null, turnsSinceReflect: 0 };
-async function ask(text) {
+// Una chiamata a Claude. withTools=false e few=true sono i ripieghi quando la richiesta completa viene rifiutata.
+async function callClaude(text, { withTools, few }) {
   const d = mem.data.chat;
-  d.turns.push({ role: 'user', content: text });
-  brain.turnsSinceReflect++;
   const limits = brain.limits || {};
-  const canTools = !!limits.tools;
+  const canTools = withTools && !!limits.tools;
   const deep = !!mem.data.boards.topic;
-  const input = [{ role: 'user', content: instructions() + (canTools ? '' : '\n(Gli strumenti non sono disponibili in questa vista: fai del tuo meglio a parole.)') }, ...d.turns.slice(-40)];
+  // solo turni con del testo, altrimenti Claude rifiuta tutta la richiesta
+  const turns = d.turns.filter((t) => t && typeof t.content === 'string' && t.content.trim()).slice(few ? -6 : -40);
+  while (turns.length && turns[0].role !== 'user') turns.shift();
+  if (!turns.length || turns[turns.length - 1].role !== 'user') turns.push({ role: 'user', content: text });
+  const input = [{ role: 'user', content: instructions() + (canTools ? '' : '\n(Gli strumenti non sono disponibili in questo momento: fai del tuo meglio a parole.)') }, ...turns];
   brain.ctl = new AbortController();
   let reply = '';
   try {
     const res = await brain.sample(input, { signal: brain.ctl.signal, cache: false, modelTier: deep ? 'default' : 'quick', ...(canTools ? { tools: tools() } : {}), onText: ({ text: t }) => { reply = t; } });
     reply = res.text;
   } finally { brain.ctl = null; }
+  return reply;
+}
+
+async function ask(text) {
+  const d = mem.data.chat;
+  d.turns = d.turns.filter((t) => t && typeof t.content === 'string' && t.content.trim());
+  d.turns.push({ role: 'user', content: text });
+  brain.turnsSinceReflect++;
+  // codici per cui ha senso riprovare in modo più semplice, invece di arrendersi
+  const soft = ['invalid_request', 'tools_unavailable', 'empty_completion', 'upstream_error', 'transform_error', 'prompt_too_large', 'capability_disabled', 'capability_removed'];
+  let reply;
+  try {
+    reply = await callClaude(text, { withTools: true, few: false });
+  } catch (e1) {
+    if (!e1 || !soft.includes(e1.code)) { d.turns.pop(); throw e1; }
+    brain.lastTrouble = e1.code;
+    try {
+      reply = await callClaude(text, { withTools: false, few: false }); // senza strumenti
+    } catch (e2) {
+      if (!e2 || !soft.includes(e2.code)) { d.turns.pop(); throw e2; }
+      try {
+        reply = await callClaude(text, { withTools: false, few: true }); // e con poca cronologia
+        d.turns = d.turns.slice(-6); // la conversazione lunga era il problema: si alleggerisce (ricordi e diario restano)
+      } catch (e3) {
+        d.turns.pop(); // la domanda fallita non deve restare a inquinare le prossime
+        throw e3;
+      }
+    }
+  }
   // con gli strumenti, il testo può contenere più "round": tieni l'ultimo blocco
-  reply = reply.split(/\n\s*\n/).filter((s) => s.trim()).pop() || reply;
+  reply = (reply || '').split(/\n\s*\n/).filter((x) => x.trim()).pop() || reply || '';
+  if (!reply.trim()) { d.turns.pop(); throw { code: 'empty_completion', message: 'risposta vuota' }; }
   d.turns.push({ role: 'assistant', content: reply });
   if (d.turns.length > 120) compact();
   save('chat');
@@ -487,7 +528,9 @@ function errorMessage(e) {
     case 'cancelled': return '';
     case 'session_expired': return 'La tua sessione su Claude è scaduta, Signore: ricarica la pagina e accedi di nuovo.';
     case 'sampling_disabled': return 'Claude non è disponibile su questo account, Signore.';
-    default: return 'Il mio cervello ha avuto un singhiozzo, Signore. Riprova.';
+    case 'upstream_error': return 'Claude non mi ha risposto in questo momento, Signore. Riprova tra qualche secondo.';
+    // caso raro: dice il codice, così chi mi ha costruito capisce subito cosa è successo
+    default: return `Claude ha rifiutato la mia richiesta, Signore. Codice ${String((e && e.code) || 'sconosciuto').replace(/_/g, ' ')}. Riprova; se continua, usa il Jarvis completo con il pulsante dorato in alto.`;
   }
 }
 

@@ -4,7 +4,7 @@ import { NeuralCore } from './neural.js';
 import { Ears, Mouth } from './voice.js';
 import { Brain, BrainError, logError } from './brain.js';
 import { createHandlers, bindBrain, reminders, getWeather, weatherText, locate, knownLocation } from './tools.js';
-import { spotify, redirectUri } from './spotify.js';
+import { spotify, redirectUri, cleanClientId, clientIdProblem } from './spotify.js';
 import { seedMemories } from './seed.js';
 import { BargeIn, bargeMode } from './bargein.js';
 import { IOS, ANDROID, MOBILE, IOS_OTHER_BROWSER, SAMSUNG_BROWSER, STANDALONE, deviceName, chromeLink } from './platform.js';
@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.9';
+const JARVIS_VERSION = '3.10';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -497,6 +497,11 @@ async function quickCommand(raw) {
       setTimeout(openSettings, 400);
       return 'Mi manca il Client ID di Spotify, Signore. Ti ho aperto le impostazioni: nel riquadro Spotify c\'è scritto cosa fare, è una procedura da fare una volta sola.';
     }
+    const idProblem = clientIdProblem(getSettings().spotifyClientId);
+    if (idProblem) {
+      setTimeout(openSettings, 400);
+      return `Non posso nemmeno provarci, Signore. ${idProblem}`;
+    }
     await say('Ti porto alla pagina di Spotify, Signore: dai il permesso e torno subito.');
     try { sessionStorage.setItem('jarvis.resume', 'spotify'); } catch { /* ignore */ } // al ritorno mi riaccendo da solo
     await spotify.connect();
@@ -863,7 +868,8 @@ function fillDiag() {
     `Chiave Gemini: ${getSettings().geminiKey ? 'presente' : 'assente'}`,
     `Modello in uso: ${brain.lastModel || (m ? brain.chain()[0] : 'non ancora scelto')} · prossimi in fila: ${m ? brain.chain().slice(0, 4).join(', ') : '-'}`,
     `Modelli a riposo: ${Object.entries(brain.cooldowns()).map(([k, v]) => `${k} (${v.why}, fino alle ${new Date(v.until).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`).join('; ') || 'nessuno'}`,
-    `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · redirect: ${redirectUri()}`,
+    `Spotify: ${spotify.isConnected() ? 'collegato' : 'non collegato'} · Client ID: ${getSettings().spotifyClientId ? (clientIdProblem(getSettings().spotifyClientId) ? 'FORMATO SBAGLIATO' : `${cleanClientId(getSettings().spotifyClientId).slice(0, 4)}…${cleanClientId(getSettings().spotifyClientId).slice(-4)} (formato giusto)`) : 'assente'}${store.get('spotifyLastError', '') ? ` · ultimo errore: ${store.get('spotifyLastError', '')}` : ''}`,
+    `Spotify redirect URI: ${redirectUri()}`,
     `Browser: ${SAMSUNG_BROWSER ? 'Samsung Internet (NON dà il microfono: usa Chrome)' : /Firefox|FxiOS/i.test(navigator.userAgent) ? 'Firefox (non dà il microfono)' : /Edg/i.test(navigator.userAgent) ? 'Edge' : /CriOS|Chrome/i.test(navigator.userAgent) ? 'Chrome' : /Safari/i.test(navigator.userAgent) ? 'Safari' : 'altro'}`,
     `Dispositivo: ${deviceName()}${STANDALONE ? ', aperto dall\'icona' : ', aperto nel browser'} · Schermo sempre acceso: ${screenAwake}`,
     `Udito: ${ears.supported ? 'supportato' : 'NON supportato'}${ears.needsTap ? ' (serve un tocco per parlare)' : ''} · Voci italiane: ${mouth.italianVoices().length}`,
@@ -901,7 +907,11 @@ function openSettings() {
   $('s-geo').textContent = geo ? `Adesso mi risulta: ${geo.name}${geo.region ? `, ${geo.region}` : ''} (${geo.source === 'gps' ? 'dal GPS' : geo.source === 'manuale' ? 'scritta da te' : 'stimata dalla rete, può essere sbagliata'})` : 'Posizione non ancora rilevata.';
   $('s-spotify').value = s.spotifyClientId;
   $('s-redirect').textContent = redirectUri();
-  $('s-spotify-status').textContent = spotify.isConnected() ? 'Collegato ✓' : 'Non collegato';
+  const spErr = store.get('spotifyLastError', '');
+  const spProblem = s.spotifyClientId ? clientIdProblem(s.spotifyClientId) : '';
+  $('s-spotify-status').textContent = spotify.isConnected() ? 'Collegato ✓'
+    : spProblem ? `Non collegato. ${spProblem}`
+      : spErr ? `Non collegato. L'ultimo tentativo è fallito: ${spErr}.` : 'Non collegato';
   $('s-spotify-connect').textContent = spotify.isConnected() ? 'Scollega' : 'Collega Spotify';
   fillVoices();
   fillMemories();
@@ -920,7 +930,8 @@ function readSettingsForm() {
     wakeWords: $('s-wake').value.trim(),
     bargeIn: $('s-barge').value,
     strictWake: $('s-strict').checked,
-    spotifyClientId: $('s-spotify').value.trim(),
+    // se dentro il testo incollato c'è un Client ID valido si tiene solo quello, ripulito
+    spotifyClientId: cleanClientId($('s-spotify').value) || $('s-spotify').value.trim(),
   };
 }
 
@@ -950,8 +961,21 @@ $('s-spotify-connect').addEventListener('click', async () => {
   try {
     await spotify.connect();
   } catch (e) {
+    try { sessionStorage.removeItem('jarvis.resume'); } catch { /* ignore */ }
     $('s-spotify-status').textContent = e.message;
   }
+});
+
+$('s-redirect-copy').addEventListener('click', async () => {
+  const uri = redirectUri();
+  try {
+    await navigator.clipboard.writeText(uri);
+    $('s-redirect-copy').textContent = 'Copiato ✓';
+  } catch {
+    const r = document.createRange(); r.selectNodeContents($('s-redirect')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    $('s-redirect-copy').textContent = 'Selezionato: copialo';
+  }
+  setTimeout(() => { $('s-redirect-copy').textContent = 'Copia indirizzo'; }, 2500);
 });
 
 $('s-test-brain').addEventListener('click', async () => {
@@ -1336,7 +1360,12 @@ function offerChrome() {
   refreshBoard();
 
   const sp = await spotify.handleRedirect().catch((e) => ({ ok: false, error: e.message }));
-  if (sp && !sp.ok) showJarvis(`Il collegamento con Spotify non è riuscito: ${sp.error}`);
+  if (sp && !sp.ok) {
+    const msg = `Il collegamento con Spotify non è riuscito: ${sp.error}.`;
+    showJarvis(msg);
+    $('boot-hint').textContent = `${msg} Tocca ATTIVA, poi ⚙ → Spotify per i controlli da fare.`;
+    state.queue.push(`Signore, ${msg} Nelle impostazioni, nel riquadro Spotify, trovi cosa controllare.`);
+  }
   if (sp && sp.ok) {
     showJarvis('Spotify collegato, Signore. Tocca ATTIVA e chiedimi un po\' di musica.');
     $('boot-hint').textContent = 'Spotify collegato. Tocca ATTIVA e chiedimi un po\' di musica.';

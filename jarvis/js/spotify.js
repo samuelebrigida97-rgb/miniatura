@@ -7,8 +7,28 @@ const TOKEN = 'https://accounts.spotify.com/api/token';
 const API = 'https://api.spotify.com/v1';
 const SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
 
+// L'indirizzo a cui Spotify deve rimandare: sempre lo stesso, con la barra finale,
+// comunque sia stata aperta la pagina. Deve essere IDENTICO a quello salvato nella dashboard di Spotify.
 export function redirectUri() {
-  return location.origin + location.pathname.replace(/index\.html$/, '');
+  let path = location.pathname.replace(/index\.html$/, '');
+  if (!path.endsWith('/')) path += '/';
+  return location.origin + path;
+}
+
+// Un Client ID di Spotify è fatto di 32 caratteri tra cifre e lettere a-f.
+// Dal testo incollato si estrae solo quello: spazi, a capo o scritte attorno farebbero rifiutare tutto.
+export function cleanClientId(raw) {
+  const m = String(raw || '').match(/[0-9a-f]{32}/i);
+  return m ? m[0].toLowerCase() : '';
+}
+
+export function clientIdProblem(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return 'Manca il Client ID di Spotify.';
+  if (cleanClientId(t)) return '';
+  if (/^AIza|^AQ\./.test(t)) return 'Quello incollato è la chiave di Gemini, non il Client ID di Spotify.';
+  if (/^https?:/i.test(t)) return 'Quello incollato è un indirizzo web, non il Client ID di Spotify.';
+  return `Il Client ID incollato non ha il formato giusto: deve essere di 32 caratteri tra cifre e lettere dalla a alla f (questo ne ha ${t.replace(/\s/g, '').length}). Copialo di nuovo dalla pagina Settings della tua app su developer.spotify.com.`;
 }
 
 function b64url(bytes) {
@@ -22,8 +42,10 @@ export const spotify = {
   },
 
   async connect() {
-    const { spotifyClientId } = getSettings();
-    if (!spotifyClientId) throw new Error('Manca il Client ID di Spotify nelle impostazioni.');
+    const problem = clientIdProblem(getSettings().spotifyClientId);
+    if (problem) throw new Error(problem);
+    const spotifyClientId = cleanClientId(getSettings().spotifyClientId);
+    store.remove('spotifyLastError');
     const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
     const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
     store.set('spotifyVerifier', verifier);
@@ -49,8 +71,12 @@ export const spotify = {
     const err = url.searchParams.get('error');
     if (!code && !err) return null;
     history.replaceState(null, '', redirectUri());
-    if (err) return { ok: false, error: err };
-    const { spotifyClientId } = getSettings();
+    if (err) {
+      const why = err === 'access_denied' ? 'hai toccato Annulla sulla pagina di Spotify' : err;
+      store.set('spotifyLastError', why);
+      return { ok: false, error: why };
+    }
+    const spotifyClientId = cleanClientId(getSettings().spotifyClientId);
     const res = await fetch(TOKEN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -62,7 +88,16 @@ export const spotify = {
         code_verifier: store.get('spotifyVerifier', ''),
       }),
     });
-    if (!res.ok) return { ok: false, error: await res.text() };
+    if (!res.ok) {
+      let why = await res.text();
+      try { const j = JSON.parse(why); why = j.error_description || j.error || why; } catch { /* testo semplice */ }
+      if (/redirect/i.test(why)) why = 'il Redirect URI salvato su Spotify non è identico a quello di Jarvis';
+      else if (/verifier/i.test(why)) why = 'il collegamento è partito da un browser ed è tornato in un altro: rifallo aprendo Jarvis sempre dallo stesso posto';
+      else if (/client/i.test(why)) why = 'Spotify non riconosce il Client ID';
+      store.set('spotifyLastError', why);
+      return { ok: false, error: why };
+    }
+    store.remove('spotifyLastError');
     this._saveToken(await res.json());
     return { ok: true };
   },
@@ -84,7 +119,7 @@ export const spotify = {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: getSettings().spotifyClientId,
+        client_id: cleanClientId(getSettings().spotifyClientId),
         grant_type: 'refresh_token',
         refresh_token: t.refresh,
       }),

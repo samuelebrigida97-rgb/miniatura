@@ -129,11 +129,24 @@ html, body {
 .sub-user { font-size: 16px; color: var(--cyan-dim); min-height: 1.3em; font-style: italic; }
 .sub-jarvis {
   font-size: 21px;
+  line-height: 1.4;
   color: var(--text);
-  max-height: 4.2em;
-  overflow: hidden;
+  /* tutta la risposta resta a schermo: il riquadro cresce verso l'alto e, se serve, scorre */
+  max-height: min(46vh, 13em);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: auto;
+  scrollbar-width: none;
+  padding: 2px 6px;
+  border-radius: 4px;
   text-shadow: 0 0 8px rgba(70, 200, 255, 0.35);
 }
+.sub-jarvis::-webkit-scrollbar { display: none; }
+.sub-jarvis.long { background: rgba(1, 6, 11, 0.78); box-shadow: 0 0 0 10px rgba(1, 6, 11, 0.78); text-align: left; }
+.sub-jarvis .said { color: var(--cyan-dim); text-shadow: none; }
+.sub-jarvis .now { color: #fff; text-shadow: 0 0 12px rgba(70, 200, 255, 0.7); }
+.sub-jarvis .next { color: var(--text); opacity: 0.75; }
 
 .buttons {
   position: fixed;
@@ -232,6 +245,9 @@ body.is-rest .buttons { display: none; }
 
 details.help summary { cursor: pointer; color: var(--cyan); padding: 6px 0; }
 details.help ol { margin: 6px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+
+button.open-link { cursor: pointer; }
+.open-link.report { bottom: calc(215px + env(safe-area-inset-bottom, 0px)); }
 
 /* ---- avvisi toccabili ---- */
 .voice-chip {

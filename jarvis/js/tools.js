@@ -500,7 +500,15 @@ export function createHandlers(ctx) {
     },
 
     async spotify_riproduci({ cerca, tipo }) {
-      const r = await spotify.play(cerca, tipo);
+      let r;
+      try {
+        r = await spotify.play(cerca, tipo);
+      } catch (e) {
+        if (!e.noDevice) throw e;
+        // l'app Spotify è chiusa: pulsante per aprirla, e al ritorno la musica parte da sola
+        ctx.pendPlay(cerca, tipo);
+        return { ok: false, messaggio: 'L\'app Spotify è chiusa. Ho messo sullo schermo il pulsante per aprirla: appena il Signore torna qui, faccio partire io la musica senza che lo richieda.' };
+      }
       ctx.onSpotifyChanged();
       if (r.ok) ctx.musicStarted(); // la musica parte a volume pieno e Jarvis torna in attesa
       return r;

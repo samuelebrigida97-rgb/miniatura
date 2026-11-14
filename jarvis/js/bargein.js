@@ -84,7 +84,9 @@ export class BargeIn {
         if (!loud) ema = ema * 0.95 + rms * 0.05; // segue il livello normale, non i picchi
         this.level = rms;
         this.threshold = threshold;
-        if (hot >= 7) { // circa 300 ms di voce forte e sostenuta: una sillaba isolata non basta
+        // Servono circa 250-280 ms di voce forte e continua. Provato più corto (160 ms): i picchi di una voce
+        // dall'altro lato della stanza tornavano a fermarlo. Meglio un attimo in più che fermarsi per gli altri.
+        if (hot >= (owner ? 6 : 7)) {
           this.triggers++;
           this.stop();
           this.onInterrupt();

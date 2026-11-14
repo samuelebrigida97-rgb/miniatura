@@ -273,6 +273,7 @@ export class Mouth {
           next();
         }, piece.length * 110 + 4000);
         u.onstart = () => { heard = true; this.lastProblem = ''; };
+        this.onSpeak?.(piece); // per evidenziare a schermo la frase che sta dicendo
         u.onend = () => { clearTimeout(guard); next(); };
         u.onerror = (ev) => {
           clearTimeout(guard);

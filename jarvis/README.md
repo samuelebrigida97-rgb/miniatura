@@ -24,6 +24,14 @@ Jarvis è una web app che gira nel browser Chrome del tablet Android. Non ha ser
 - **Memoria al volo.** A ogni domanda riceve i ricordi che c'entrano con quello che stai dicendo, e può frugare da solo nei ricordi vecchi, nel diario e nelle idee salvate.
 - **Apre altre app con un tuo tocco.** «Portami a…», «cercami su YouTube…», «scrivi su WhatsApp a…»: prepara un pulsante dorato sullo schermo. Android non permette a una pagina web di aprire app da sola, quindi serve il tocco.
 
+### Tutto a schermo
+La risposta resta scritta per intero: quello che ha già detto si attenua, la frase che sta dicendo è in bianco, il resto è in attesa. Il riquadro segue la voce e si può scorrere col dito per rileggere.
+
+### Segnalare un problema a Claude con un tocco
+Di' «Jarvis, segnala a Claude che…» (oppure ⚙ → Diagnostica → **Manda rapporto a Claude**). Jarvis prepara un rapporto tecnico completo: versione, stato di cervello, udito, voce, Spotify, ultimi errori e ultimi scambi. Tocchi il pulsante dorato e scegli l'app di Claude. Nel rapporto non finiscono mai chiavi né codici segreti.
+
+Jarvis non può farsi modificare il codice da solo, ed è voluto: ogni modifica passa da te.
+
 ### Si lascia interrompere
 - **A voce:** se inizi a parlare mentre lui parla, si zittisce in circa mezzo secondo e ti ascolta. Mentre parla non trascrive nulla: misura solo se arriva una voce vicina, con la cancellazione dell'eco per non sentire se stesso. Silenzio, rumore di fondo e voci lontane non lo fermano.
 - **Col dito:** un tocco in qualsiasi punto dello schermo lo ferma sempre.
@@ -132,6 +140,8 @@ A mano: ⚙ → Diagnostica → **Cerca aggiornamenti**. La versione in uso è l
 3. Salva, apri l'app che hai creato e copia il **Client ID**.
 4. In Jarvis apri ⚙ → *Client ID* di Spotify, incollalo e premi **Collega Spotify**. Accetta i permessi.
 5. Apri l'app Spotify sul tablet e fai partire un brano almeno una volta, così il tablet risulta come "dispositivo attivo". Da lì in poi: «Jarvis, metti qualcosa dei Queen», «abbassa il volume», «salta», «cosa sta suonando?».
+
+Se l'app Spotify è chiusa quando chiedi la musica, Jarvis mette sullo schermo il pulsante «Apri Spotify»: la apri, torni su Jarvis e la musica parte da sola, senza richiederla.
 
 Mentre parli con Jarvis la musica si abbassa da sola, e torna al volume di prima quando lo saluti.
 

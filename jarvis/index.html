@@ -81,6 +81,7 @@
   <!-- fuori dall'HUD: restano toccabili anche sopra la schermata di avvio -->
   <a id="btn-chrome" class="chrome" hidden>APRI IN CHROME</a>
   <div id="btn-voice" class="voice-chip" hidden>TOCCA LO SCHERMO PER RIDARMI LA VOCE</div>
+  <button id="btn-report" class="open-link report" hidden>RAPPORTO PRONTO · TOCCA PER MANDARLO A CLAUDE</button>
   <a id="btn-open" class="open-link" target="_blank" rel="noopener" hidden></a>
   <div class="buttons">
     <button id="btn-keyboard" class="icon-btn" aria-label="Scrivi">⌨</button>
@@ -219,6 +220,12 @@
           <button type="button" id="s-test-brain" class="small">Prova il cervello</button>
           <button type="button" id="s-update" class="small ghost">Cerca aggiornamenti</button>
           <button type="button" id="s-clear-errors" class="small ghost">Pulisci errori</button>
+        </div>
+        <label>Qualcosa non va? Descrivilo in due parole (facoltativo)
+          <input id="s-report-note" autocomplete="off" placeholder="es. non mi sente quando c'è la tv accesa">
+        </label>
+        <div class="row">
+          <button type="button" id="s-report" class="small">Manda rapporto a Claude</button>
         </div>
         <div id="s-test-result" class="help"></div>
         <pre id="s-diag" class="diag"></pre>

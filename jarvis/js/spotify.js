@@ -145,7 +145,7 @@ export const spotify = {
     if (!res.ok) {
       const msg = data?.error?.message || res.statusText;
       if (res.status === 403) throw new Error(`Spotify ha rifiutato il comando (serve Premium?): ${msg}`);
-      if (res.status === 404) throw new Error('Nessun dispositivo Spotify attivo: apri l\'app Spotify sul tablet e fai partire un brano una volta.');
+      if (res.status === 404) { const e = new Error('Spotify è chiuso su tutti i dispositivi: va aperta l\'app una volta.'); e.noDevice = true; throw e; }
       throw new Error(`Errore Spotify: ${msg}`);
     }
     return data;
@@ -154,7 +154,9 @@ export const spotify = {
   async _device() {
     const { devices = [] } = (await this.api('GET', '/me/player/devices')) || {};
     if (!devices.length) {
-      throw new Error('Nessun dispositivo Spotify trovato: apri l\'app Spotify sul tablet (o sull\'Alexa) e riprova.');
+      const e = new Error('Spotify è chiuso su tutti i dispositivi: va aperta l\'app una volta.');
+      e.noDevice = true;
+      throw e;
     }
     return devices.find((d) => d.is_active) || devices.find((d) => /tablet|smartphone/i.test(d.type)) || devices[0];
   },

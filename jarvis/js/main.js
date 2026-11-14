@@ -32,7 +32,7 @@ let keyImported = false;
 })();
 
 const $ = (id) => document.getElementById(id);
-const JARVIS_VERSION = '3.11';
+const JARVIS_VERSION = '3.12';
 
 // Il riconoscimento vocale italiano a volte scrive "Jarvis" in modi creativi: si accettano
 // le storpiature note, quelle a una lettera di distanza e le parole aggiunte nelle impostazioni.
@@ -320,7 +320,7 @@ async function resumePendingPlay() {
     // l'app appena aperta impiega qualche secondo a farsi vedere da Spotify
     for (let i = 0; i < 4; i++) {
       try {
-        const r = await spotify.play(job.q, job.type);
+        const r = job.type === 'mood' ? await spotify.playMusic(job.q) : await spotify.play(job.q, job.type);
         $('btn-open').hidden = true;
         setTimeout(refreshMusic, 1500);
         await say(r.ok ? `Ecco ${r.in_riproduzione}.` : r.messaggio);
@@ -547,6 +547,39 @@ async function run(task) {
 
 function numberWords(n) { return String(n); }
 
+// ---------- «metti musica» ----------
+// Riconosce le richieste generiche di musica. Restituisce null se non è una richiesta di musica,
+// altrimenti { mood } (stringa vuota = «qualsiasi cosa», cioè riprendi o successi del momento).
+const MOODS = 'rilassante|rilassanti|tranquilla|tranquillo|calma|calmo|soft|allegra|allegro|allegre|triste|tristi|energica|energico|carica|movimentata|movimentato|ritmata|ritmato|ballabile|da ballare|romantica|romantico|dolce|bella|belle|nuova|nuove|vecchia|vecchie|classica|italiana|italiano|napoletana|napoletano|straniera|famosa|famose|moderna|di sottofondo|da sottofondo|di festa|natalizia|cristiana|gospel|lo-fi|lofi|chill|jazz|rock|pop|rap|trap|reggaeton|dance|house|techno|latina|anni \\d0|anni \\d{4}|per studiare|per lavorare|per concentrarmi|per dormire|per rilassarmi|per cucinare|per la palestra|per allenarmi|per correre|per la sera|per la mattina|per bambini|del momento|di adesso|di oggi';
+function musicRequest(t) {
+  const m = t.match(/^(?:metti|mettimi|metti su|mettici|fammi sentire|fammi ascoltare|fai partire|parti con|accendi|voglio|vorrei|suona|riproduci)?\s*(?:un po'? di |un po di |un po'? |della |delle |dell'|qualche |la |una |le )?(musica|canzoni|canzone|brani|qualcosa|qualcosina|un brano|una canzone|una playlist|playlist)(?:\s+(.*?))?(?:\s+su spotify)?$/);
+  if (!m) return null;
+  let rest = (m[2] || '').trim();
+  // «metti musica dei Queen», «qualcosa di Vasco»: è un artista, non un genere → ci pensa la ricerca normale
+  const di = rest.match(/^(?:di|dei|degli|delle|della|del|d')\s*(.+)$/);
+  if (di) {
+    if (new RegExp(`^(?:${MOODS})$`).test(di[1])) rest = di[1]; // «qualcosa di rilassante»
+    else return null;
+  }
+  if (!rest && !m[1] && !/^(musica|qualcosa)$/.test(t) && !/^(metti|mettimi|fammi sentire|fammi ascoltare|fai partire|accendi|voglio|vorrei)/.test(t)) return null;
+  return { mood: rest.replace(/^(?:un po'?|che sia|tipo)\s+/, '').trim() };
+}
+
+async function startMusic(mood) {
+  let r;
+  try {
+    r = await spotify.playMusic(mood);
+  } catch (e) {
+    if (!e.noDevice) throw e;
+    pendPlay(mood, 'mood');
+    return 'L\'app Spotify è chiusa, Signore. Tocca il pulsante dorato per aprirla: appena torni qui la musica la faccio partire io.';
+  }
+  setTimeout(refreshMusic, 1500);
+  if (r.ok && !brain.brainstorm) state.endAfterReply = true; // si fa da parte e lascia la musica a volume pieno
+  if (!r.ok) return r.messaggio;
+  return r.ripreso ? `Riprendo da dove avevi lasciato: ${r.in_riproduzione}.` : `Ecco ${r.in_riproduzione}.`;
+}
+
 // ---------- rapporto per Claude ----------
 // Jarvis non può (e non deve) farsi modificare il codice da solo. Può però preparare un rapporto tecnico
 // completo che il Signore manda a Claude con un tocco, invece di descrivere il problema a parole.
@@ -607,8 +640,8 @@ async function quickCommand(raw) {
   }
 
   const t = raw.toLowerCase().replace(/[.,!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim()
-    .replace(/^(ehi |hey |ok |per favore |senti |dai )+/, '').replace(/( per favore| grazie| jarvis)+$/, '').trim();
-  if (!t || t.split(' ').length > 7) return null;
+    .replace(/^(ehi |hey |ok |okay |per favore |senti |dai |jarvis |giarvis |jarvi )+/, '').replace(/( per favore| grazie| jarvis)+$/, '').trim();
+  if (!t || t.split(' ').length > 9) return null;
   const now = new Date();
 
   // collegare Spotify a voce
@@ -659,6 +692,21 @@ async function quickCommand(raw) {
     reminders.add('Il timer è scaduto', Date.now() + ms);
     refreshReminders();
     return `Timer di ${half ? 'mezz\'ora' : `${numberWords(qty)} ${unit}`} avviato, Signore.`;
+  }
+
+  // «metti musica», «metti qualcosa di rilassante», «musica per studiare»
+  const music = musicRequest(t);
+  if (music) {
+    if (!spotify.isConnected()) {
+      return getSettings().spotifyClientId && !clientIdProblem(getSettings().spotifyClientId)
+        ? 'Per mettere la musica devo essere collegato a Spotify, Signore, e su questo dispositivo non lo sono ancora. Dimmi «Jarvis, collega Spotify»: basta farlo una volta.'
+        : 'Per mettere la musica devo essere collegato a Spotify, Signore, e mi manca il Client ID. Dimmi «Jarvis, collega Spotify» e ti apro le istruzioni.';
+    }
+    try {
+      return await startMusic(music.mood);
+    } catch (e) {
+      return `Spotify non mi ha dato retta, Signore: ${e.message}`;
+    }
   }
 
   if (spotify.isConnected()) {

@@ -303,14 +303,14 @@ export const declarations = [
   },
   {
     name: 'spotify_riproduci',
-    description: 'Fa partire musica su Spotify: un brano, un artista, un album o una playlist.',
+    description: 'Fa partire musica su Spotify. Per un brano, artista, album o playlist precisi usa cerca e tipo. Per richieste generiche ("metti musica", "qualcosa di rilassante", "musica per studiare") NON usare cerca: usa solo umore (vuoto = riprende quello che il Signore ascoltava, o i successi del momento).',
     parameters: {
       type: 'OBJECT',
       properties: {
-        cerca: S('STRING', 'Cosa cercare, es. "Bohemian Rhapsody Queen" o "lo-fi per studiare"'),
+        cerca: S('STRING', 'Brano, artista, album o playlist precisi, es. "Bohemian Rhapsody Queen". Vuoto per richieste generiche.'),
         tipo: S('STRING', 'track, artist, album o playlist', { enum: ['track', 'artist', 'album', 'playlist'] }),
+        umore: S('STRING', 'Per richieste generiche: genere, atmosfera o momento, es. "rilassante", "rock anni 80", "per studiare". Vuoto = qualsiasi.'),
       },
-      required: ['cerca'],
     },
   },
   {
@@ -499,14 +499,15 @@ export function createHandlers(ctx) {
       return { dimenticati: mem.length - keep.length };
     },
 
-    async spotify_riproduci({ cerca, tipo }) {
+    async spotify_riproduci({ cerca = '', tipo, umore = '' }) {
+      const generic = !String(cerca).trim() || /^(musica|qualcosa|canzoni|una canzone|un brano)$/i.test(String(cerca).trim());
       let r;
       try {
-        r = await spotify.play(cerca, tipo);
+        r = generic ? await spotify.playMusic(umore) : await spotify.play(cerca, tipo);
       } catch (e) {
         if (!e.noDevice) throw e;
         // l'app Spotify è chiusa: pulsante per aprirla, e al ritorno la musica parte da sola
-        ctx.pendPlay(cerca, tipo);
+        ctx.pendPlay(generic ? umore : cerca, generic ? 'mood' : tipo);
         return { ok: false, messaggio: 'L\'app Spotify è chiusa. Ho messo sullo schermo il pulsante per aprirla: appena il Signore torna qui, faccio partire io la musica senza che lo richieda.' };
       }
       ctx.onSpotifyChanged();

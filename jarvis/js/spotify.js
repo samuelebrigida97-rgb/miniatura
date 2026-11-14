@@ -174,6 +174,35 @@ export const spotify = {
     return { ok: true, in_riproduzione: `${item.name}${who}`, dispositivo: device.name };
   },
 
+  // «Metti musica»: senza indicazioni riprende quello che il Signore stava ascoltando;
+  // se non c'è niente da riprendere (o si chiede un genere/umore) cerca una playlist adatta.
+  async playMusic(mood = '') {
+    const device = await this._device();
+    const m = String(mood || '').trim();
+    if (!m) {
+      try {
+        await this.api('PUT', `/me/player/play?device_id=${device.id}`); // riprende da dove era rimasto
+        await new Promise((r) => setTimeout(r, 900));
+        const now = await this.api('GET', '/me/player');
+        if (now && now.is_playing && now.item) {
+          const who = (now.item.artists || []).map((a) => a.name).join(', ');
+          return { ok: true, in_riproduzione: `${now.item.name}${who ? ` di ${who}` : ''}`, ripreso: true, dispositivo: device.name };
+        }
+      } catch {
+        // il dispositivo c'è (lo abbiamo appena trovato): un rifiuto qui vuol dire «niente da riprendere».
+        // Si passa alla playlist; se il dispositivo fosse davvero sparito, lo dirà la riproduzione qui sotto.
+      }
+    }
+    const query = m ? (/^musica\b/.test(m) ? m : `musica ${m}`) : 'Hit del momento Italia';
+    const q = new URLSearchParams({ q: query, type: 'playlist', limit: '5' });
+    const data = await this.api('GET', `/search?${q}`);
+    const pl = (data?.playlists?.items || []).find((x) => x && x.uri);
+    if (!pl) return { ok: false, messaggio: `Non ho trovato una playlist per "${m || 'musica'}" su Spotify.` };
+    await this.api('PUT', `/me/player/play?device_id=${device.id}`, { context_uri: pl.uri });
+    try { await this.api('PUT', `/me/player/shuffle?state=true&device_id=${device.id}`); } catch { /* non fondamentale */ }
+    return { ok: true, in_riproduzione: `la playlist ${pl.name}`, dispositivo: device.name };
+  },
+
   async control(action, value) {
     switch (action) {
       case 'pausa': await this.api('PUT', '/me/player/pause'); break;

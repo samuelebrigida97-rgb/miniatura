@@ -141,6 +141,8 @@ A mano: ⚙ → Diagnostica → **Cerca aggiornamenti**. La versione in uso è l
 4. In Jarvis apri ⚙ → *Client ID* di Spotify, incollalo e premi **Collega Spotify**. Accetta i permessi.
 5. Apri l'app Spotify sul tablet e fai partire un brano almeno una volta, così il tablet risulta come "dispositivo attivo". Da lì in poi: «Jarvis, metti qualcosa dei Queen», «abbassa il volume», «salta», «cosa sta suonando?».
 
+**«Jarvis, metti musica»** riprende quello che stavi ascoltando su Spotify; se non c'è niente da riprendere mette i successi del momento. Puoi chiedere anche un genere o un'atmosfera: «metti musica rilassante», «qualcosa di allegro», «musica per studiare», «rock anni 80». Per un artista o un brano preciso: «metti i Queen», «metti Bohemian Rhapsody».
+
 Se l'app Spotify è chiusa quando chiedi la musica, Jarvis mette sullo schermo il pulsante «Apri Spotify»: la apri, torni su Jarvis e la musica parte da sola, senza richiederla.
 
 Mentre parli con Jarvis la musica si abbassa da sola, e torna al volume di prima quando lo saluti.

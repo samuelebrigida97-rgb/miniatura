@@ -153,7 +153,7 @@
   /* ---------------- materiali per fase ---------------- */
   let FASE_MAT = 10;
   const mats = [], matCache = {}, geoCache = {};
-  const UVSCALA = { stoffa: 6, pietra: 30, legno: 18, tenda: 10, intonaco: 22, terreno: 40, lastricato: 60 };
+  const UVSCALA = { stoffa: 6, pietra: 30, legno: 34, tenda: 10, intonaco: 22, terreno: 40, lastricato: 60 };
   function M(color, o = {}) {
     const k = FASE_MAT + "|" + color + "|" + JSON.stringify(o, (kk, v) => (v && v.isTexture ? v.uuid : v));
     if (!matCache[k]) {
@@ -335,14 +335,14 @@
   }
   function Arca() {
     const g = new T.Group(), s = new T.Shape(); s.moveTo(-45, 5); s.quadraticCurveTo(-42, -1, -36, -3); s.lineTo(36, -3); s.quadraticCurveTo(42, -1, 45, 5); s.lineTo(-45, 5);
-    g.add(mesh(geo("scafo", () => { const e = new T.ExtrudeGeometry(s, { depth: 15, bevelEnabled: true, bevelThickness: 0.6, bevelSize: 0.6, bevelSegments: 2 }); e.translate(0, 3, -7.5); return e; }), M("#6a4220", { tex: "legno" })));
-    g.add(mesh(GB(62, 5, 11), M("#8a5a30", { tex: "legno" }), 0, 10.5, 0));
-    g.add(mesh(geo("tettoArca", () => { const t = new T.Shape(); t.moveTo(-7, 0); t.lineTo(7, 0); t.lineTo(0, 3.5); t.lineTo(-7, 0); const e = new T.ExtrudeGeometry(t, { depth: 64, bevelEnabled: false }); e.translate(0, 0, -32); e.rotateY(Math.PI / 2); return e; }), M("#4a2c14", { tex: "legno" }), 0, 13, 0));
+    g.add(mesh(geo("scafo", () => { const e = new T.ExtrudeGeometry(s, { depth: 15, bevelEnabled: true, bevelThickness: 0.6, bevelSize: 0.6, bevelSegments: 2 }); e.translate(0, 3, -7.5); return e; }), M("#a8743e", { tex: "legno" })));
+    g.add(mesh(GB(62, 5, 11), M("#c08a50", { tex: "legno" }), 0, 10.5, 0));
+    g.add(mesh(geo("tettoArca", () => { const t = new T.Shape(); t.moveTo(-7, 0); t.lineTo(7, 0); t.lineTo(0, 3.5); t.lineTo(-7, 0); const e = new T.ExtrudeGeometry(t, { depth: 64, bevelEnabled: false }); e.translate(0, 0, -32); e.rotateY(Math.PI / 2); return e; }), M("#7a4e28", { tex: "legno" }), 0, 13, 0));
     for (let i = -2; i <= 2; i++) g.add(mesh(GB(2.5, 2, 0.4), M("#1e140c"), i * 11, 10.5, 5.6, false));
     g.add(mesh(GB(8, 6, 0.5), M("#3e2410", { tex: "legno" }), 18, 7, 7.8)); const ramp = mesh(GB(8, 0.6, 16), M("#5a3a1a", { tex: "legno" }), 18, 3, 15); ramp.rotation.x = 0.45; g.add(ramp);
     return g;
   }
-  function Arcobaleno() { const g = new T.Group(); ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#0a84ff", "#5856d6", "#af52de"].forEach((c, i) => g.add(mesh(new T.TorusGeometry(58 - i * 1.5, 0.75, 6, 64, Math.PI), M(c, { emissive: c, emissiveIntensity: 0.25, transparent: true, opacity: 0.28, depthWrite: false }), 0, 0, 0, false))); g.userData.vivo = true; return g; }
+  function Arcobaleno() { const g = new T.Group(); ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#0a84ff", "#5856d6", "#af52de"].forEach((c, i) => g.add(mesh(new T.TorusGeometry(58 - i * 1.5, 0.75, 6, 64, Math.PI), M(c, { emissive: c, emissiveIntensity: 0.08, transparent: true, opacity: 0.22, depthWrite: false }), 0, 0, 0, false))); g.userData.vivo = true; return g; }
   function Ziggurat() {
     const g = new T.Group(), col = ["#b08a5e", "#b8916a", "#c09a72", "#c6a27a", "#cca882", "#d2af8a"];
     [46, 39, 32, 25, 19, 13].forEach((w, i) => { const b = mesh(GB(w, 10, w), M(col[i], { tex: "pietra", uv: 12 }), 0, i * 10 + 5, 0); b.rotation.y = i * 0.13; g.add(b); const r = mesh(GB(w * 0.22, 1, 7), M("#a58560", { tex: "pietra", uv: 12 }), w * 0.39, i * 10 + 10.3, w * 0.25); r.rotation.y = i * 0.13; g.add(r); });
@@ -477,7 +477,7 @@
     }
   }
   const HC = {};
-  function hRaw(x, y) { let h = hNat(x, y); for (const t of TAPPE) { const ex = Math.max(0, Math.abs(x - t.x) - 37.5), ey = Math.max(0, Math.abs(y - t.y) - 37.5), d = Math.hypot(ex, ey); if (d < 12) h = lerp(h, HC[t.n], 1 - sstep(0, 12, d)); } return h; }
+  function hRaw(x, y) { let h = hNat(x, y); for (const t of TAPPE) { const alta = HC[t.n] > 35, mezzo = alta ? 30 : 37.5, raccordo = alta ? 34 : 12, ex = Math.max(0, Math.abs(x - t.x) - mezzo), ey = Math.max(0, Math.abs(y - t.y) - mezzo), d = Math.hypot(ex, ey); if (d < raccordo) h = lerp(h, HC[t.n], 1 - sstep(0, raccordo, d)); } return h; }
   const CP = campiona(ROUTE_D, 1), CR = campiona(RIVER_D, 2);
   const IDX = {}; TAPPE.forEach((t) => { let b = 0, bd = 1e9; CP.forEach((p, i) => { const d = (p[0] - t.x) ** 2 + (p[1] - t.y) ** 2; if (d < bd) { bd = d; b = i; } }); IDX[t.n] = b; });
   const LIV = [], SALTI3D = [];

@@ -881,7 +881,7 @@
     const o = costruttore(); const txt = `${st.nome} · ${st.rif} (storia in più)`;
     o.traverse((c) => { if (c.isMesh) { c.userData.info = txt; c.userData.tappa = st.tappa; } });
     put(info(o, txt), pos[0], pos[1], { rot: pos[2] !== undefined ? pos[2] : R() * 6.28, h: pos[3] });
-    STORIE_POS.push([pos[0], pos[1], raggio]);
+    STORIE_POS.push([pos[0], pos[1], raggio, id]);
   }
   function GrandePesce() {
     const prof = [[0.2, -21], [1.1, -18], [2.4, -13], [4.4, -6], [5.7, 1], [6, 7], [5.6, 12], [4.6, 15.5], [3.9, 16.8]].map(([r, y]) => new T.Vector2(r, y));
@@ -1476,6 +1476,7 @@
     opzioni(o) { Object.assign(ui, o); if (o.misura === false && gMisura) { gMisura.clear(); puntoA = null; } aggiornaVisibilita(false); },
     inquadra(spec, dur = 1200) { fermaTour(); const [p, t] = specCam(spec); vola(p, t, dur); },
     foto,
+    volaStoria(id) { const q = STORIE_POS.find((a) => a[3] === id); if (!q) return false; fermaTour(); const [p, t] = specCam(`z:${q[0].toFixed(1)},${q[1].toFixed(1)},${Math.max(55, q[2] * 4.5)}`); vola(p, t, 1400); return true; },
     guarda: (a, b, c, d, e, f) => vola(V(a, b, hAt(a, b) + c), V(d, e, hAt(d, e) + f), 10),
     vista, volaTappa, tourFiume, tourTappe, fermaTour,
     esploso(v) { ui.esploso = v ? 1 : 0; },

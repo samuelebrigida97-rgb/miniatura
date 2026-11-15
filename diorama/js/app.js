@@ -251,7 +251,7 @@
         <table class="tab"><tr><th>Figura</th><th>Misura</th><th>Q.tà</th></tr>
           ${t.figure.map((f) => `<tr><td>${esc(f.nome)}</td><td>${esc(f.misura)}</td><td>${f.qta}</td></tr>`).join("")}</table>
         ${t.luce ? `<p class="luce">💡 Luce: <b>${esc(t.luce)}</b> (12 V)</p>` : ""}
-        ${(typeof STORIE !== "undefined" ? STORIE.filter((st) => st.tappa === n) : []).map((st, i) => `${i ? "" : "<h3>📚 Storie in più qua vicino</h3>"}<div class="storia-box"><b>${esc(st.nome)}</b> <i>${esc(st.rif)}</i><p>${esc(st.storia)}</p><button class="btn" data-lista-da-scheda="s:${st.id}">📋 Lista per ${esc(st.nome)}</button></div>`).join("")}
+        ${(typeof STORIE !== "undefined" ? STORIE.filter((st) => st.tappa === n) : []).map((st, i) => `${i ? "" : "<h3>📚 Storie in più qua vicino</h3>"}<div class="storia-box"><b>${esc(st.nome)}</b> <i>${esc(st.rif)}</i><p>${esc(st.storia)}</p><button class="btn" data-lista-da-scheda="s:${st.id}">📋 Lista per ${esc(st.nome)}</button> <button class="btn" data-guarda-da-scheda="${st.id}">🎥 Guarda nel 3D</button></div>`).join("")}
         <button class="btn primario lista-tappa" data-lista-da-scheda="t${n}">📋 Lista per questa tappa</button>
         <p class="pos">Posizione sul tabellone: ${t.x / 10} cm da sinistra, ${t.y / 10} cm dall'alto.</p>
         <div class="scheda-nav">
@@ -261,6 +261,7 @@
       </div>`;
     $(".chiudi", $("#scheda")).addEventListener("click", () => $("#scheda").close());
     $$("[data-go]", $("#scheda")).forEach((b) => b.addEventListener("click", () => apriTappa(+b.dataset.go)));
+    $$("[data-guarda-da-scheda]", $("#scheda")).forEach((b) => b.addEventListener("click", () => { $("#scheda").close(); window.guardaStoria(b.dataset.guardaDaScheda); }));
     $$("[data-lista-da-scheda]", $("#scheda")).forEach((b) => b.addEventListener("click", () => { $("#scheda").close(); window.apriLista(b.dataset.listaDaScheda); }));
     if (window.Scena3D) {
       const box = document.createElement("div"); box.className = "ante3d";
@@ -353,7 +354,7 @@
       corpo = `<section class="gruppo"><h3>🧱 Materiali</h3>${f.materiali.map((m, i) => voce(`f${f.n}-m-${i}`, esc(m))).join("")}</section><section class="gruppo"><h3>🛠️ Attrezzi</h3>${f.attrezzi.map((m, i) => voce(`f${f.n}-a-${i}`, esc(m))).join("")}</section><section class="gruppo"><h3>📏 Misure da tenere a mente</h3><ul>${f.misure.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></section>`; }
     else if (k[0] === "t") { const t = TAPPE[+k.slice(1) - 1], ss = STOR.filter((st) => st.tappa === t.n); titolo = `📍 Tappa ${t.n} · ${esc(t.nome)}`; vai = `<button class="btn" data-apri-tappa="${t.n}">Apri la scheda della tappa</button>`;
       corpo = `<section class="gruppo"><h3>🖨️ Figure da stampare in 3D</h3>${tabFig("t" + t.n, t.figure)}</section><section class="gruppo"><h3>🏗️ Da costruire</h3>${t.costruisci.map((c, i) => voce(`t${t.n}-c-${i}`, esc(c))).join("")}</section>${t.luce ? `<section class="gruppo"><h3>💡 Luce</h3>${voce(`t${t.n}-luce`, esc(t.luce) + " (12 V)", "1")}</section>` : ""}<section class="gruppo"><h3>🎨 Per finire</h3>${voce(`t${t.n}-col`, "Colori acrilici della zona " + esc(ZONE[t.zona].nome) + " (" + esc(ZONE[t.zona].tinta) + ")")}${voce(`t${t.n}-col2`, "Colla cianoacrilica per fissare le figure")}${voce(`t${t.n}-col3`, "Erba statica, sassolini e cespugli")}</section>${ss.map((st) => bloccoStoria(st, true)).join("")}`; }
-    else if (k.startsWith("s:")) { const st = STOR.find((q) => q.id === k.slice(2)); titolo = `📚 ${esc(st.nome)} <small>${esc(st.rif)}</small>`; vai = `<button class="btn" data-apri-tappa="${st.tappa}">Vicino alla tappa ${st.tappa}: apri la scheda</button>`; corpo = bloccoStoria(st, false); }
+    else if (k.startsWith("s:")) { const st = STOR.find((q) => q.id === k.slice(2)); titolo = `📚 ${esc(st.nome)} <small>${esc(st.rif)}</small>`; vai = `<button class="btn primario" data-guarda-storia="${st.id}">🎥 Guarda nel 3D</button><button class="btn" data-apri-tappa="${st.tappa}">Vicino alla tappa ${st.tappa}: apri la scheda</button>`; corpo = bloccoStoria(st, false); }
     box.innerHTML = `<div class="lista-testa"><h3>${titolo}</h3><div class="azioni">${vai}<button class="btn" data-lista-chiudi>✕ Torna alla lista completa</button></div><div class="progresso"><div class="barra"><span id="barra-l"></span></div><b id="perc-l"></b></div></div>${corpo}`;
     aggiornaL();
     box.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -364,8 +365,11 @@
   $("#lista-scelta").addEventListener("click", (e) => {
     if (e.target.closest("[data-lista-chiudi]")) mostraLista("tutto");
     const t = e.target.closest("[data-apri-tappa]"); if (t) apriTappa(+t.dataset.apriTappa);
+    const gs = e.target.closest("[data-guarda-storia]"); if (gs) guardaStoria(gs.dataset.guardaStoria);
     const f = e.target.closest("[data-vai-fase]"); if (f) { $('[data-view="manuale"]').click(); setTimeout(() => vai(+f.dataset.vaiFase), 350); }
   });
+  function guardaStoria(id) { $('[data-view="manuale"]').click(); if (window.impostaModo) window.impostaModo("3d"); setTimeout(() => { vai(14); setTimeout(() => window.Scena3D && window.Scena3D.pronta && window.Scena3D.volaStoria(id), 900); }, 400); }
+  window.guardaStoria = guardaStoria;
   window.apriLista = (k) => { $('[data-view="materiali"]').click(); setTimeout(() => mostraLista(k), 50); };
 
   /* ---------------- schede (tab) ---------------- */

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Il Fiume della Vita · Manuale del diorama biblico</title>
+  <meta name="description" content="Manuale visivo passo passo per costruire a mano un diorama della Bibbia, dalla Genesi all'Apocalisse.">
+  <meta name="theme-color" content="#2a3a5c">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232a3a5c'/%3E%3Cpath d='M10 14 C30 20 20 40 54 50' stroke='%234fb3ff' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='14' r='7' fill='%233f9645'/%3E%3Ccircle cx='52' cy='50' r='7' fill='%23f2c14e'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">≈</span>
+      <div>
+        <h1>Il Fiume della Vita</h1>
+        <p>Manuale del diorama biblico · dalla Genesi all'Apocalisse</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-view="manuale" aria-selected="true">Manuale</button>
+      <button role="tab" data-view="tappe">Tappe</button>
+      <button role="tab" data-view="materiali">Materiali</button>
+      <button role="tab" data-view="info">Info</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============ MANUALE (fasi) ============ -->
+    <section id="v-manuale" class="view attiva">
+      <div class="layout">
+        <div class="col-board">
+          <div class="board-card">
+            <div class="toolbar">
+              <label class="sw"><input type="checkbox" id="opt-focus"><span>Solo novità</span></label>
+              <label class="sw"><input type="checkbox" id="opt-sotto"><span>Vedi sotto la base</span></label>
+              <label class="sw"><input type="checkbox" id="opt-notte"><span>Notte</span></label>
+              <label class="sw"><input type="checkbox" id="opt-tilt"><span>Vista inclinata</span></label>
+              <label class="sw"><input type="checkbox" id="opt-num" checked><span>Numeri</span></label>
+            </div>
+            <div class="board-wrap" id="board-wrap"></div>
+            <p class="novita" id="novita"></p>
+            <p class="hint">Tocca una casella per aprire la scheda della tappa.</p>
+          </div>
+
+          <div class="nav-fasi">
+            <button class="btn" id="prev" aria-label="Fase precedente">◀ <span>Fase precedente</span></button>
+            <div class="contatore" id="contatore">Fase 1 di 14</div>
+            <button class="btn primario" id="next" aria-label="Fase successiva"><span>Fase successiva</span> ▶</button>
+          </div>
+          <div class="pallini" id="pallini" aria-label="Vai a una fase"></div>
+        </div>
+
+        <article class="col-fase fase-card" id="fase-card" aria-live="polite"></article>
+      </div>
+    </section>
+
+    <!-- ============ TAPPE ============ -->
+    <section id="v-tappe" class="view">
+      <h2>Le 23 tappe del percorso</h2>
+      <p class="sub">Dall'alto a sinistra (Genesi) al basso a destra (Apocalisse). Tocca una tappa per la scheda completa.</p>
+      <div class="legenda" id="legenda"></div>
+      <div class="griglia-tappe" id="griglia-tappe"></div>
+    </section>
+
+    <!-- ============ MATERIALI ============ -->
+    <section id="v-materiali" class="view">
+      <h2>Lista materiali completa</h2>
+      <p class="sub">Spunta quello che hai già comprato: la lista si ricorda le tue scelte su questo dispositivo.</p>
+      <div class="progresso"><div class="barra"><span id="barra"></span></div><b id="perc">0%</b></div>
+      <div class="azioni">
+        <button class="btn" id="stampa">Stampa la lista</button>
+        <button class="btn" id="azzera">Azzera le spunte</button>
+      </div>
+      <div id="lista-materiali" class="lista-materiali"></div>
+    </section>
+
+    <!-- ============ INFO ============ -->
+    <section id="v-info" class="view testo">
+      <h2>Come leggere questo manuale</h2>
+      <ul>
+        <li><b>Il tabellone</b> è disegnato in scala, visto dall'alto: 80 x 50 cm. Il righello in basso misura 10 cm.</li>
+        <li>Con <b>Fase successiva</b> vedi cosa aggiungere: le novità <span class="evid">brillano in oro</span>. Attiva <b>Solo novità</b> per vedere solo quelle.</li>
+        <li><b>Vedi sotto la base</b> mostra vaschetta, tubo e cavi nascosti (linee tratteggiate).</li>
+        <li><b>Notte</b> (dalla fase 9) accende le luci; <b>Vista inclinata</b> fa vedere il tabellone come se fossi in piedi davanti al tavolo.</li>
+        <li>Puoi anche usare le frecce ← → della tastiera.</li>
+      </ul>
+      <h2>Il fiume della vita</h2>
+      <p>Nasce nell'Eden sotto l'albero della vita (Genesi 2,10) e arriva nella Nuova Gerusalemme sotto lo stesso albero (Apocalisse 22,1-2). L'acqua scende per gravità; la pompa nella vaschetta sotto la Nuova Gerusalemme la riporta alla sorgente con un tubicino nascosto sotto la base. Così il cerchio si chiude: la fine della Bibbia ritorna al principio.</p>
+      <h2>Sicurezza</h2>
+      <ul>
+        <li>Solo componenti a <b>12 V</b> con marchio CE. L'alimentatore resta <b>fuori</b> dalla base. Nessun cavo a 220 V dentro il diorama.</li>
+        <li>Schiuma, resina, epossidica e gomma liquida: guanti, occhiali e stanza ben aerata.</li>
+        <li>La pompa non deve mai girare a secco; usa acqua demineralizzata.</li>
+      </ul>
+      <h2>Misure di riferimento</h2>
+      <table class="tab">
+        <tr><th>Elemento</th><th>Misura</th></tr>
+        <tr><td>Persone</td><td>circa 1 cm</td></tr>
+        <tr><td>Animali piccoli</td><td>3-5 mm</td></tr>
+        <tr><td>Arca di Noè</td><td>9 x 1,5 x 1 cm (300 x 50 x 30 cubiti)</td></tr>
+        <tr><td>Torre di Babele</td><td>alta 6-7 cm</td></tr>
+        <tr><td>Tempio di Salomone</td><td>circa 5 x 3 cm</td></tr>
+        <tr><td>Nave di Paolo</td><td>circa 3 cm</td></tr>
+        <tr><td>Albero della vita (x2)</td><td>alto 6 cm, chioma Ø 4 cm</td></tr>
+        <tr><td>Nuova Gerusalemme</td><td>9 x 9 cm</td></tr>
+        <tr><td>Caselle</td><td>7,5 x 7,5 cm</td></tr>
+        <tr><td>Fiume</td><td>largo 5-10 mm</td></tr>
+      </table>
+    </section>
+  </main>
+
+  <!-- Scheda della tappa -->
+  <dialog id="scheda" aria-labelledby="scheda-titolo">
+    <div class="scheda-in" id="scheda-in"></div>
+  </dialog>
+
+  <footer class="piede">Manuale per uso personale · disegno in scala 1 mm = 1 unità · i testi si modificano in <code>js/data.js</code></footer>
+
+  <script src="js/data.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

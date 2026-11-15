@@ -876,7 +876,7 @@
   }
   function storia(id, costruttore, raggio, dove) {
     const st = STORIE.find((q) => q.id === id); if (!st) return;
-    const t = TAPPE[st.tappa - 1], pos = dove || postoLibero(t.x, t.y, raggio); if (!pos) return;
+    const t = TAPPE[st.tappa - 1], pos = dove || postoLibero(t.x, t.y, raggio) || postoLibero(t.x, t.y, raggio * 0.75, 18, 150); if (!pos) return;
     nCorr = st.tappa; gCorr = GT[st.tappa];
     const o = costruttore(); const txt = `${st.nome} · ${st.rif} (storia in più)`;
     o.traverse((c) => { if (c.isMesh) { c.userData.info = txt; c.userData.tappa = st.tappa; } });

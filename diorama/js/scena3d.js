@@ -76,7 +76,7 @@
       TEX.pietra = { map: texC(tela(S, (x, y) => { const i = y * S + x, b = h[i] > 0.1 ? col[i] * (0.8 + n[i] * 0.35) : 0.55; return [222 * b, 208 * b, 184 * b]; })), normal: texN(h, S, 6) }; }
     { const n = rumore(256, 6, 31); TEX.intonaco = { map: texC(tela(256, (x, y) => { const v = 0.86 + n[y * 256 + x] * 0.22; return [240 * v, 232 * v, 214 * v]; })), normal: texN(n, 256, 3) }; }
     { const S = 256, n = rumore(S, 6, 41), h = new Float32Array(S * S); for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) h[y * S + x] = (x % 32 < 2 ? 0 : 1) * (0.7 + 0.3 * Math.sin(y * 0.15 + n[y * S + x] * 9));
-      TEX.legno = { map: texC(tela(S, (x, y) => { const v = h[y * S + x] ? 0.75 + 0.25 * Math.sin(y * 0.11 + n[y * S + x] * 12 + Math.floor(x / 32) * 3) : 0.35; return [168 * v, 118 * v, 72 * v]; })), normal: texN(h, S, 5) }; }
+      TEX.legno = { map: texC(tela(S, (x, y) => { const v = h[y * S + x] ? 0.82 + 0.18 * Math.sin(y * 0.11 + n[y * S + x] * 12 + Math.floor(x / 32) * 3) : 0.5; return [235 * v, 200 * v, 160 * v]; })), normal: texN(h, S, 5) }; }
     { const S = 128, n = rumore(S, 5, 51); TEX.tenda = { map: texC(tela(S, (x, y) => { const b = [0.3, 0.85, 0.5][Math.floor(y / 16) % 3] * (0.85 + n[y * S + x] * 0.3); return [200 * b, 175 * b, 140 * b]; })), normal: texN(n, S, 4) }; }
     { const S = 64, n = rumore(S, 4, 61); TEX.stoffa = { map: texC(tela(S, (x, y) => { const v = 0.85 + n[y * S + x] * 0.2 + ((x + y) % 4 === 0 ? 0.04 : 0); return [255 * v, 255 * v, 255 * v]; })), normal: texN(n, S, 3) }; }
     { const S = 512, n = rumore(S, 6, 71), r = rng(73), h = new Float32Array(S * S), col = new Float32Array(S * S), ps = [];
@@ -91,6 +91,12 @@
     const sprite = (fn) => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); fn(x); const t = new T.CanvasTexture(c); t.encoding = T.sRGBEncoding; return t; };
     TEX.fiamma = sprite((x) => { const g = x.createRadialGradient(32, 38, 0, 32, 32, 30); g.addColorStop(0, "rgba(255,240,180,1)"); g.addColorStop(0.3, "rgba(255,170,60,.9)"); g.addColorStop(0.7, "rgba(230,70,10,.35)"); g.addColorStop(1, "rgba(120,20,0,0)"); x.fillStyle = g; x.fillRect(0, 0, 64, 64); });
     TEX.fumo = sprite((x) => { const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(200,200,200,.55)"); g.addColorStop(1, "rgba(200,200,200,0)"); x.fillStyle = g; x.fillRect(0, 0, 64, 64); });
+    { const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d"), r = rng(141);
+      x.fillStyle = "#ffffff"; x.fillRect(0, 0, 12, 12); // angolo opaco usato da tronchi e rami
+      for (let i = 0; i < 150; i++) { const a = r() * 6.28, d = Math.sqrt(r()) * 100, cx = 128 + Math.cos(a) * d, cy = 128 + Math.sin(a) * d, l = 10 + r() * 12, v = Math.floor(170 + r() * 85);
+        x.save(); x.translate(cx, cy); x.rotate(r() * 6.28); x.fillStyle = `rgb(${v},${v},${v})`; x.beginPath(); x.ellipse(0, 0, l, l * 0.42, 0, 0, 7); x.fill();
+        x.strokeStyle = `rgba(0,0,0,.25)`; x.lineWidth = 1; x.beginPath(); x.moveTo(-l, 0); x.lineTo(l, 0); x.stroke(); x.restore(); }
+      const t = new T.CanvasTexture(c); t.encoding = T.sRGBEncoding; t.anisotropy = 8; TEX.foglie = { map: t }; }
     TEX.alone = sprite((x) => { const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.2, "rgba(255,255,255,.5)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, 64, 64); });
   }
 
@@ -248,16 +254,37 @@
   const Capra = () => mesh(G_QUAD("#4a3a2c", 4, 4.2, "capra"), MV());
 
   const MVEG = () => M("#ffffff", { vertexColors: true, roughness: 0.92, side: T.DoubleSide });
+  const DEPTH_FOGLIE = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking, alphaTest: 0.45 });
+  const MFOG = () => { const m = M("#ffffff", { vertexColors: true, roughness: 0.85, side: T.DoubleSide, alphaTest: 0.45, tex: "foglie" }); m.userData.foglie = true; DEPTH_FOGLIE.map = TEX.foglie.map; return m; };
+  const uvFisso = (g) => { const u = g.attributes.uv; for (let i = 0; i < u.count; i++) u.setXY(i, 0.02, 0.98); return g; };
+  // una chioma = tanti ciuffi (quadrati di foglie trasparenti) disposti su sfere
+  function ciuffi(blobs, scuro, chiaro, seed, densita = 1) {
+    const r = rng(seed), out = [], cS = new T.Color(scuro), cC = new T.Color(chiaro);
+    blobs.forEach(([bx, by, bz, br]) => {
+      const n = Math.round(br * br * 0.9 * densita) + 6;
+      for (let i = 0; i < n; i++) {
+        const u = r() * 2 - 1, a = r() * 6.283, q = Math.sqrt(1 - u * u), d = br * (0.35 + 0.65 * Math.sqrt(r()));
+        const dx = Math.cos(a) * q, dy = u, dz = Math.sin(a) * q, sz = br * (0.7 + r() * 0.5);
+        const g = new T.PlaneGeometry(sz, sz).toNonIndexed(); g.rotateX(r() * 6.28); g.rotateY(r() * 6.28); g.rotateZ(r() * 6.28);
+        g.translate(bx + dx * d, by + dy * d * 0.8, bz + dz * d);
+        const k = Math.min(1, Math.max(0, 0.35 + dy * 0.45 + (d / br) * 0.3 + (r() - 0.5) * 0.25)), c = cS.clone().lerp(cC, k), col = new Float32Array(18);
+        for (let v = 0; v < 6; v++) col.set([c.r, c.g, c.b], v * 3);
+        const nor = new Float32Array(18); for (let v = 0; v < 6; v++) nor.set([dx, dy * 0.8 + 0.2, dz], v * 3);
+        g.setAttribute("normal", new T.BufferAttribute(nor, 3)); g.setAttribute("color", new T.BufferAttribute(col, 3)); out.push(g);
+      }
+    });
+    return out;
+  }
   function G_ALBERO(v) {
     return geo("albero" + v, () => {
-      const r = rng(300 + v), parti = [parte(GC(0.9, 1.7, 14, 7), "#5a4030", 0, 7, 0), parte(GC(0.5, 0.8, 7, 5), "#5a4030", 2, 13, 0, 0, 0, -0.6), parte(GC(0.5, 0.8, 7, 5), "#5a4030", -1.6, 13.5, 1, 0.4, 0, 0.6)];
-      const verdi = [["#2f5a22", "#5f8a35"], ["#3a6326", "#6f9a3f"], ["#2a4f20", "#4f7a2f"], ["#46702c", "#86a84a"]][v % 4];
-      for (let i = 0; i < 6 + (v % 3); i++) { const a = r() * 6.28, d = i ? 3 + r() * 3.5 : 0, rr = 4.5 + r() * 2.5; parti.push(parte(deforma(new T.IcosahedronGeometry(rr, 1), 0.16, v * 10 + i), [verdi[0], verdi[1], { r: 15, g: 12 }], Math.cos(a) * d, 18 + r() * 5 + (i ? 0 : 2), Math.sin(a) * d)); }
-      return unisci(parti);
+      const r = rng(300 + v), parti = [parte(GC(0.9, 1.7, 14, 7), "#5a4030", 0, 7, 0), parte(GC(0.5, 0.8, 8, 5), "#5a4030", 2.2, 13, 0, 0, 0, -0.7), parte(GC(0.5, 0.8, 8, 5), "#5a4030", -1.8, 13.5, 1, 0.5, 0, 0.7), parte(GC(0.4, 0.6, 6, 5), "#5a4030", 0, 15, -2, -0.7, 0, 0)].map(uvFisso);
+      const verdi = [["#22451a", "#6a9a3a"], ["#2a4f1e", "#7aa845"], ["#1e3f18", "#5a8a32"], ["#33582a", "#8fb24f"]][v % 4], blobs = [];
+      for (let i = 0; i < 6 + (v % 3); i++) { const a = r() * 6.28, d = i ? 3 + r() * 3.5 : 0; blobs.push([Math.cos(a) * d, 18 + r() * 5 + (i ? 0 : 2), Math.sin(a) * d, 4.2 + r() * 2.4]); }
+      return unisci(parti.concat(ciuffi(blobs, verdi[0], verdi[1], 900 + v)));
     });
   }
   const G_CIPRESSO = () => geo("cipresso", () => unisci([parte(GC(0.7, 1, 5, 6), "#5a4030", 0, 2.5, 0), parte(deforma(new T.SphereGeometry(1, 10, 14), 0.08, 3), ["#1f3a1c", "#3d5e2c", { r: 3, g: 22 }], 0, 14, 0, 0, 0, 0, 3.6, 12, 3.6)]));
-  const G_ULIVO = (v) => geo("ulivo" + v, () => { const r = rng(400 + v), p = [parte(GC(0.9, 1.6, 8, 6), "#6a5a4a", 0, 4, 0, 0, 0, 0.25), parte(GC(0.7, 0.9, 6, 5), "#6a5a4a", 1.5, 8, 0, 0, 0, -0.5)]; for (let i = 0; i < 5; i++) { const a = r() * 6.28, d = r() * 4; p.push(parte(deforma(new T.IcosahedronGeometry(3.6 + r() * 1.5, 1), 0.2, i + v * 7), ["#58663e", "#9aa87a", { r: 9, g: 8 }], Math.cos(a) * d + 1, 11.5 + r() * 2, Math.sin(a) * d, 0, 0, 0, 1.2, 0.7, 1.2)); } return unisci(p); });
+  const G_ULIVO = (v) => geo("ulivo" + v, () => { const r = rng(400 + v), p = [parte(GC(0.9, 1.6, 8, 6), "#6a5a4a", 0, 4, 0, 0, 0, 0.25), parte(GC(0.7, 0.9, 6, 5), "#6a5a4a", 1.5, 8, 0, 0, 0, -0.5), parte(GC(0.5, 0.7, 5, 5), "#6a5a4a", -1.2, 8.5, 0.5, 0.4, 0, 0.6)].map(uvFisso), b = []; for (let i = 0; i < 5; i++) { const a = r() * 6.28, d = r() * 4; b.push([Math.cos(a) * d + 1, 11.5 + r() * 2, Math.sin(a) * d, 3.4 + r() * 1.4]); } return unisci(p.concat(ciuffi(b, "#4a5634", "#a8b488", 950 + v, 1.2))); });
   function G_PALMA(v) {
     return geo("palma" + v, () => {
       const r = rng(500 + v), h = 18 + v * 3, curva = new T.CatmullRomCurve3([new T.Vector3(0, 0, 0), new T.Vector3(1 + v * 0.5, h * 0.5, 0), new T.Vector3(2 + v, h, 0.5)]);
@@ -276,10 +303,10 @@
       return unisci(parti);
     });
   }
-  const G_CESPUGLIO = (v) => geo("cesp" + v, () => { const r = rng(600 + v), p = []; for (let i = 0; i < 4; i++) p.push(parte(deforma(new T.IcosahedronGeometry(2 + r() * 1.5, 1), 0.2, i + v), ["#2f4a1f", v % 2 ? "#6a7a3a" : "#5a8a32", { r: 0, g: 5 }], (r() - 0.5) * 4, 1.8 + r(), (r() - 0.5) * 4)); return unisci(p); });
-  const Albero = (v = 0, s = 1) => { const m = mesh(G_ALBERO(v), MVEG()); m.scale.setScalar(s); m.rotation.y = R() * 6.28; return m; };
+  const G_CESPUGLIO = (v) => geo("cesp" + v, () => { const r = rng(600 + v), b = []; for (let i = 0; i < 4; i++) b.push([(r() - 0.5) * 4, 1.8 + r(), (r() - 0.5) * 4, 2 + r() * 1.5]); return unisci(ciuffi(b, "#24401a", v % 2 ? "#7a8a42" : "#6a9a3a", 980 + v, 1.6)); });
+  const Albero = (v = 0, s = 1) => { const m = mesh(G_ALBERO(v), MFOG()); m.scale.setScalar(s); m.rotation.y = R() * 6.28; return m; };
   const Palma = (v = 0) => { const m = mesh(G_PALMA(v % 3), MVEG()); m.rotation.y = R() * 6.28; return m; };
-  const Cespuglio = (s = 1) => { const m = mesh(G_CESPUGLIO(Math.floor(R() * 4)), MVEG()); m.scale.setScalar(s); return m; };
+  const Cespuglio = (s = 1) => { const m = mesh(G_CESPUGLIO(Math.floor(R() * 4)), MFOG()); m.scale.setScalar(s); return m; };
 
   function Tenda(w = 14, d = 10, h = 8, col = "#cdbb98") {
     const g = geo(`tenda${w}|${d}|${h}`, () => { const s = new T.Shape(); s.moveTo(-w / 2, 0); s.quadraticCurveTo(-w * 0.2, h * 0.75, 0, h); s.quadraticCurveTo(w * 0.2, h * 0.75, w / 2, 0); s.lineTo(-w / 2, 0); const e = new T.ExtrudeGeometry(s, { depth: d, bevelEnabled: false, curveSegments: 6 }); e.translate(0, 0, -d / 2); return e; });
@@ -302,8 +329,7 @@
     g.add(mesh(deforma(new T.LatheGeometry([[0, 0], [4.5, 0], [3.4, 2], [2.6, 10], [2.2, 24], [2.6, 32], [0, 33]].map(([a, b]) => new T.Vector2(a, b)), 12), 0.05, 9), M("#6a4a32", { roughness: 0.95 })));
     [[0.75, 0], [-0.7, 1.6], [0.65, 3.1], [-0.6, 4.6], [0.5, 5.6]].forEach(([r, a]) => { const b = mesh(GC(0.9, 1.6, 16, 7), M("#6a4a32"), Math.cos(a) * 4.5, 31, Math.sin(a) * 4.5); b.rotation.set(Math.sin(a) * r, 0, -Math.cos(a) * r); g.add(b); });
     const ch = [], r = rng(77);
-    [[0, 46, 0, 13], [10, 41, 4, 10], [-10, 42, -3, 10], [3, 41, -11, 9.5], [-4, 40, 11, 9.5], [0, 55, 0, 9], [7, 50, -6, 8], [-7, 50, 6, 8]].forEach(([x, y, z, rr], i) => ch.push(parte(deforma(new T.IcosahedronGeometry(rr, 2), 0.12, i + 5), ["#1f5a24", "#4f9a3a", { r: -rr, g: rr * 2 }], x, y, z)));
-    g.add(mesh(geo("chiomaVita", () => unisci(ch)), MVEG()));
+    g.add(mesh(geo("chiomaVita", () => unisci(ciuffi([[0, 46, 0, 13], [10, 41, 4, 10], [-10, 42, -3, 10], [3, 41, -11, 9.5], [-4, 40, 11, 9.5], [0, 55, 0, 9], [7, 50, -6, 8], [-7, 50, 6, 8]], "#15451c", "#62b048", 1777, 1.3))), MFOG()));
     for (let i = 0; i < 16; i++) { const a = r() * 6.28, rr = 11 + r() * 5; g.add(mesh(GS(1.6, 8, 6), M("#f0b93a", { emissive: "#c98a00", emissiveIntensity: 0.35, roughness: 0.4 }), Math.cos(a) * rr, 38 + r() * 14, Math.sin(a) * rr)); }
     return g;
   }
@@ -316,7 +342,7 @@
     g.add(mesh(GB(8, 6, 0.5), M("#3e2410", { tex: "legno" }), 18, 7, 7.8)); const ramp = mesh(GB(8, 0.6, 16), M("#5a3a1a", { tex: "legno" }), 18, 3, 15); ramp.rotation.x = 0.45; g.add(ramp);
     return g;
   }
-  function Arcobaleno() { const g = new T.Group(); ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#0a84ff", "#5856d6", "#af52de"].forEach((c, i) => g.add(mesh(new T.TorusGeometry(58 - i * 1.9, 0.95, 6, 64, Math.PI), M(c, { emissive: c, emissiveIntensity: 0.55, transparent: true, opacity: 0.55, depthWrite: false }), 0, 0, 0, false))); g.userData.vivo = true; return g; }
+  function Arcobaleno() { const g = new T.Group(); ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#0a84ff", "#5856d6", "#af52de"].forEach((c, i) => g.add(mesh(new T.TorusGeometry(58 - i * 1.5, 0.75, 6, 64, Math.PI), M(c, { emissive: c, emissiveIntensity: 0.25, transparent: true, opacity: 0.28, depthWrite: false }), 0, 0, 0, false))); g.userData.vivo = true; return g; }
   function Ziggurat() {
     const g = new T.Group(), col = ["#b08a5e", "#b8916a", "#c09a72", "#c6a27a", "#cca882", "#d2af8a"];
     [46, 39, 32, 25, 19, 13].forEach((w, i) => { const b = mesh(GB(w, 10, w), M(col[i], { tex: "pietra", uv: 12 }), 0, i * 10 + 5, 0); b.rotation.y = i * 0.13; g.add(b); const r = mesh(GB(w * 0.22, 1, 7), M("#a58560", { tex: "pietra", uv: 12 }), w * 0.39, i * 10 + 10.3, w * 0.25); r.rotation.y = i * 0.13; g.add(r); });
@@ -574,11 +600,10 @@
     FASE_MAT = 5; const gCan = new T.Group();
     SALTI3D.forEach((i) => { const pts = []; for (let q2 = -10; q2 <= 8; q2 += 2) { const k = Math.min(CR.length - 1, Math.max(0, i + q2)); pts.push(V(CR[k][0], CR[k][1], LIV[k] - 3)); } gCan.add(mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts), 20, 5.5, 12, false), M("#e8f6ff", { transparent: true, opacity: 0.35, roughness: 0.05, side: T.DoubleSide }), 0, 0, 0, false)); });
     reg(gCan, 5, 99, "terreno");
-    // caselle lastricate (fase 8)
-    FASE_MAT = 8; const gCas = new T.Group(), mL = M("#ffffff", { tex: "lastricato", roughness: 0.9 });
-    TAPPE.forEach((t) => { if (t.n === 23) return; const p = new T.PlaneGeometry(73, 73), u = p.attributes.uv; for (let i = 0; i < u.count; i++) u.setXY(i, u.getX(i) * 1.1 + t.n * 0.37, u.getY(i) * 1.1 + t.n * 0.21); const m = new T.Mesh(p, mL); m.rotation.x = -Math.PI / 2; m.position.copy(V(t.x, t.y, HC[t.n] + 0.35)); m.receiveShadow = true; gCas.add(m); });
-    const bordi = []; TAPPE.forEach((t) => { if (t.n === 23) return; for (let k = -36; k <= 36; k += 3.2) [[k, -36.5], [k, 36.5], [-36.5, k], [36.5, k]].forEach(([a, b]) => bordi.push([t.x + a, t.y + b, HC[t.n] + 0.6])); });
-    const imB = new T.InstancedMesh(new T.DodecahedronGeometry(1.6, 0), M("#8a7c66", { roughness: 0.9 }), bordi.length), dm = new T.Object3D(), r = rng(3);
+    // bordo delle radure delle tappe (fase 8)
+    FASE_MAT = 8; const gCas = new T.Group();
+    const bordi = [], rb = rng(5); TAPPE.forEach((t) => { if (t.n === 23) return; for (let k = -36; k <= 36; k += 5 + rb() * 4) [[k, -36.5], [k, 36.5], [-36.5, k], [36.5, k]].forEach(([a, b]) => { if (rb() < 0.55) bordi.push([t.x + a + (rb() - 0.5) * 2, t.y + b + (rb() - 0.5) * 2, HC[t.n] + 0.2]); }); });
+    const imB = new T.InstancedMesh(new T.DodecahedronGeometry(1.3, 0), M("#8a7c66", { roughness: 0.9, flatShading: true }), bordi.length), dm = new T.Object3D(), r = rng(3);
     bordi.forEach((b, i) => { dm.position.copy(V(b[0], b[1], b[2])); dm.rotation.set(r() * 3, r() * 3, r() * 3); dm.scale.set(1 + r() * 0.4, 0.6 + r() * 0.3, 1 + r() * 0.4); dm.updateMatrix(); imB.setMatrixAt(i, dm.matrix); }); imB.castShadow = imB.receiveShadow = true; gCas.add(imB);
     reg(gCas, 8, 99, "terreno", "nessuna");
   }
@@ -601,7 +626,7 @@
         if (Math.hypot((x - 405) / 56, (y - 150) / 78) < 1) c.lerp(tmp.set("#8e5a3e"), sstep(18, 70, h) * 0.85);
         if (Math.hypot((x - 197) / 78, (y - 182) / 150) < 1) c.lerp(tmp.set("#f4f6f8"), sstep(98, 118, h + n * 8) * (1 - sstep(1.4, 2.4, sl)));
         if (dp < 18.5) c.lerp(dp > 15.5 ? tmp.set("#6e5a40") : tmp.set("#a08463").multiplyScalar(0.92 + 0.12 * n), 1 - sstep(16.5, 18.5, dp) * 0.5);
-        if (cas >= 0) c.set("#a08463");
+        if (cas >= 0) c.lerp(tmp.set("#9c8262").multiplyScalar(0.9 + 0.2 * n), 0.55 + 0.25 * sstep(20, 36, cas));
         if (dr < 6.5) c.set("#2e2e22"); else if (dr < 10) c.lerp(tmp.set("#3e4e22"), 0.75);
         if (h < 4.5) c.lerp(tmp.set("#5a5e44"), 0.8);
         if (Math.abs(x - NJ.x) < 45 && Math.abs(y - NJ.y) < 45) c.set("#e8dcbc");
@@ -733,9 +758,9 @@
     g.clear();
     perMat.forEach((arr, m) => {
       const merged = BGU.mergeBufferGeometries(arr, false); if (!merged) return;
-      if (m.map) { const p = merged.attributes.position, nn = merged.attributes.normal, uv = merged.attributes.uv, S = m.userData.uv || 22;
+      if (m.map && !m.userData.foglie) { const p = merged.attributes.position, nn = merged.attributes.normal, uv = merged.attributes.uv, S = m.userData.uv || 22;
         for (let i = 0; i < p.count; i++) { const ax = Math.abs(nn.getX(i)), ay = Math.abs(nn.getY(i)), az = Math.abs(nn.getZ(i)); if (ay >= ax && ay >= az) uv.setXY(i, p.getX(i) / S, p.getZ(i) / S); else if (ax >= az) uv.setXY(i, p.getZ(i) / S, p.getY(i) / S); else uv.setXY(i, p.getX(i) / S, p.getY(i) / S); } }
-      const me = new T.Mesh(merged, m); me.castShadow = !m.transparent; me.receiveShadow = true; g.add(me);
+      const me = new T.Mesh(merged, m); me.castShadow = !m.transparent; me.receiveShadow = true; if (m.userData.foglie) me.customDepthMaterial = DEPTH_FOGLIE; g.add(me);
     });
     vivi.forEach((v) => g.add(v)); hit.forEach((h) => { g.add(h); HITS.push(h); });
   }
@@ -926,6 +951,7 @@
       if (!arr.length) return null;
       const im = new T.InstancedMesh(g, m, arr.length); im.castShadow = ombra; im.receiveShadow = true;
       arr.forEach((a, i) => { dm.position.set(a[0] - 400, a[2], a[1] - 250); dm.rotation.set(0, a[3], 0); const s = a[4] || 1; if (Array.isArray(a[6])) dm.scale.set(s * a[6][0], s * a[6][1], s * a[6][2]); else dm.scale.setScalar(s); dm.updateMatrix(); im.setMatrixAt(i, dm.matrix); if (colori) im.setColorAt(i, col.set(a[5])); });
+      if (m.userData.foglie) im.customDepthMaterial = DEPTH_FOGLIE;
       gPieno.add(im); return im;
     }
     const tiles = TAPPE.map((t) => [t.x, t.y]);
@@ -965,10 +991,10 @@
     inst(G_TESTA(), M(PELLI[1], { roughness: 0.7 }), L.persona, false);
     inst(G_VELO(), mVeste, L.persona.map((a) => [a[0], a[1], a[2], a[3], a[4], a[6]]), true);
     inst(G_PECORA(), MV(), L.pecora);
-    L.albero.forEach((a, v) => inst(G_ALBERO(v), MVEG(), a));
+    L.albero.forEach((a, v) => inst(G_ALBERO(v), MFOG(), a));
     L.palma.forEach((a, v) => inst(G_PALMA(v), MVEG(), a));
-    L.ulivo.forEach((a, v) => inst(G_ULIVO(v), MVEG(), a));
-    L.cespuglio.forEach((a, v) => inst(G_CESPUGLIO(v), MVEG(), a));
+    L.ulivo.forEach((a, v) => inst(G_ULIVO(v), MFOG(), a));
+    L.cespuglio.forEach((a, v) => inst(G_CESPUGLIO(v), MFOG(), a));
     inst(G_CIPRESSO(), MVEG(), L.cipresso);
     inst(G_CAMMELLO(), MV(), L.cammello);
     inst(deforma(new T.DodecahedronGeometry(2.2, 1), 0.25, 8), M("#8a8274", { tex: "pietra", uv: 8, roughness: 0.95, flatShading: true }), L.roccia);

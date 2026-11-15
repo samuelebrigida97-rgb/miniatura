@@ -880,7 +880,7 @@
     nCorr = st.tappa; gCorr = GT[st.tappa];
     const o = costruttore(); const txt = `${st.nome} · ${st.rif} (storia in più)`;
     o.traverse((c) => { if (c.isMesh) { c.userData.info = txt; c.userData.tappa = st.tappa; } });
-    put(info(o, txt), pos[0], pos[1], { rot: pos[2] !== undefined ? pos[2] : R() * 6.28, h: pos[3] });
+    put(info(o, txt), pos[0], pos[1], { rot: pos[2] !== undefined ? pos[2] : (R() - 0.5) * 0.8, h: pos[3] });
     STORIE_POS.push([pos[0], pos[1], raggio, id]);
   }
   function GrandePesce() {

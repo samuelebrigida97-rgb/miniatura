@@ -195,26 +195,109 @@
   const senzaColore = (g) => { g.deleteAttribute("color"); return g; };
   const PELLI = ["#c99a72", "#b07d55", "#d8ad85", "#8c5f3e", "#e0b896"];
   const VESTI = ["#7a2f24", "#2f4f7a", "#6b7a3a", "#a5772f", "#6a3a5c", "#2f6a66", "#cdbb92", "#8a5a3a", "#4a4a6a", "#e8e0cc", "#5a3a2a", "#9a3a2a"];
-  const LATHE_VESTE = [[0, 0], [2.5, 0], [2.4, 1.2], [2.0, 3.5], [1.65, 5.6], [1.95, 6.6], [1.6, 7.5], [0.7, 8.0], [0, 8.05]].map(([a, b]) => new T.Vector2(a, b));
-  const G_VESTE = () => geo("veste", () => senzaColore(unisci([parte(new T.LatheGeometry(LATHE_VESTE, 12), "#fff"), parte(GC(0.5, 0.55, 4.4, 6), "#fff", 1.9, 5.4, 0.3, 0.25, 0, 0.32), parte(GC(0.5, 0.55, 4.4, 6), "#fff", -1.9, 5.4, 0.3, 0.25, 0, -0.32)])));
-  const G_TESTA = () => geo("testa", () => senzaColore(parte(new T.SphereGeometry(1.35, 12, 10), "#fff", 0, 9.0, 0, 0, 0, 0, 1, 1.08, 1)));
-  const G_VELO = () => geo("velo", () => senzaColore(unisci([parte(new T.SphereGeometry(1.6, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), "#fff", 0, 9.05, -0.15), parte(GB(3.0, 3.2, 0.5), "#fff", 0, 7.9, -1.3, 0.25)])));
-  const G_MANI = () => geo("mani", () => senzaColore(unisci([parte(GS(0.55, 6, 5), "#fff", 2.45, 3.4, 0.9), parte(GS(0.55, 6, 5), "#fff", -2.45, 3.4, 0.9)])));
+  // Figura realistica in scala 1:170 (alta ~10,5 mm): tunica con pieghe, mantello aperto davanti,
+  // cintura, maniche, mani, sandali, testa proporzionata con naso, barba e copricapo.
+  function pieghe(g, amp, yMax, seme) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(x, z), k = Math.max(0, Math.min(1, (yMax - y) / yMax));
+      const f = 1 + amp * k * (Math.sin(a * 7 + seme + y * 0.25) * 0.7 + Math.sin(a * 13 - seme * 2 + y * 0.6) * 0.3);
+      p.setX(i, x * f); p.setZ(i, z * f);
+    }
+    g.computeVertexNormals(); return g;
+  }
+  const PROF_VESTE = [[0, 0.05], [1.6, 0.05], [1.62, 0.35], [1.48, 1.6], [1.32, 3.2], [1.12, 4.8], [1.02, 5.6], [1.12, 6.5], [1.3, 7.5], [1.28, 8.05], [0.95, 8.5], [0.36, 8.8], [0.3, 9.05], [0, 9.1]].map(([a, b]) => new T.Vector2(a, b));
+  const PROF_MANTO = [[1.78, 0.6], [1.62, 2.2], [1.45, 4.2], [1.3, 5.6], [1.42, 6.9], [1.5, 7.7], [1.36, 8.25], [0.9, 8.7], [0.55, 8.85]].map(([a, b]) => new T.Vector2(a, b));
+  const BRACCIA = {
+    giunte: [[[1.3, 8.0, 0], [1.55, 6.9, 0.15], [1.35, 5.9, 0.75], [0.55, 5.6, 1.25]], [[-1.3, 8.0, 0], [-1.55, 6.9, 0.15], [-1.35, 5.9, 0.75], [-0.55, 5.6, 1.25]]],
+    alzato: [[[1.3, 8.0, 0], [1.75, 8.9, 0.25], [1.95, 10.1, 0.45], [2.0, 10.9, 0.5]], [[-1.3, 8.0, 0], [-1.6, 6.8, 0.1], [-1.65, 5.6, 0.35], [-1.55, 4.9, 0.45]]],
+    bastone: [[[1.3, 8.0, 0], [1.6, 7.0, 0.3], [1.6, 6.3, 0.95], [1.5, 6.3, 1.45]], [[-1.3, 8.0, 0], [-1.6, 6.8, 0.1], [-1.65, 5.6, 0.35], [-1.55, 4.9, 0.45]]],
+  };
+  const v3 = (a) => new T.Vector3(a[0], a[1], a[2]);
+  const G_VESTE = (posa = "giunte") => geo("veste|" + posa, () => {
+    const corpo = pieghe(new T.LatheGeometry(PROF_VESTE, 22), 0.07, 5.4, 1.3); corpo.scale(1, 1, 0.78);
+    const parti = [corpo];
+    BRACCIA[posa].forEach((b) => { const c = new T.CatmullRomCurve3(b.map(v3)); const t = new T.TubeGeometry(c, 10, 0.34, 7, false); parti.push(t); const fine = c.getPoint(0.97), dir = c.getTangent(0.97); const pol = new T.CylinderGeometry(0.36, 0.44, 0.5, 8, 1, true); pol.applyQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), dir)); pol.translate(fine.x, fine.y, fine.z); parti.push(pol); parti.push(new T.SphereGeometry(0.36, 8, 6).translate(b[0][0], b[0][1], b[0][2])); });
+    return unisci(parti.map((g) => (g.index ? g.toNonIndexed() : g)).map((g) => { g.deleteAttribute("color"); return g; }));
+  });
+  const G_MANTO = () => geo("manto", () => { const g = pieghe(new T.LatheGeometry(PROF_MANTO, 22, 0.55, Math.PI * 2 - 1.1), 0.09, 6.5, 4.1); g.scale(1, 1, 0.82); return g; });
+  const G_PELLE = (posa = "giunte") => geo("pelle|" + posa, () => senzaColore(unisci([
+    parte(new T.SphereGeometry(0.74, 14, 12), "#fff", 0, 9.85, 0.05, 0, 0, 0, 0.92, 1.12, 1),
+    parte(new T.ConeGeometry(0.16, 0.42, 6), "#fff", 0, 9.8, 0.78, Math.PI / 2 + 0.25),
+    parte(GS(0.17, 6, 4), "#fff", 0.68, 9.9, 0.05), parte(GS(0.17, 6, 4), "#fff", -0.68, 9.9, 0.05),
+    parte(GC(0.3, 0.34, 0.6, 8), "#fff", 0, 9.05, 0.05),
+    ...BRACCIA[posa].map((b) => parte(GS(0.3, 8, 6), "#fff", b[3][0], b[3][1], b[3][2], 0, 0, 0, 0.9, 1.1, 1)),
+  ])));
+  const G_SCURI = (barba = true, posa = "giunte") => geo("scuri|" + barba + posa, () => unisci([
+    parte(new T.TorusGeometry(1.05, 0.15, 6, 22), "#5a3a22", 0, 5.65, 0, Math.PI / 2, 0, 0, 1, 0.8, 1),
+    parte(GB(0.28, 1.6, 0.08), "#5a3a22", 0.35, 4.85, 0.86, 0.1), parte(GB(0.26, 1.3, 0.08), "#4a2e1a", 0.0, 4.95, 0.87, -0.08),
+    parte(GS(0.4, 8, 6), "#3e2a1a", 0.55, 0.18, 1.0, 0, 0, 0, 0.75, 0.45, 1.5), parte(GS(0.4, 8, 6), "#3e2a1a", -0.55, 0.18, 1.0, 0, 0, 0, 0.75, 0.45, 1.5),
+    parte(GS(0.1, 6, 4), "#1a1410", 0.25, 10.02, 0.66), parte(GS(0.1, 6, 4), "#1a1410", -0.25, 10.02, 0.66),
+    parte(GB(0.22, 0.06, 0.08), "#3a2618", 0.25, 10.2, 0.68), parte(GB(0.22, 0.06, 0.08), "#3a2618", -0.25, 10.2, 0.68),
+    ...(barba ? [parte(GS(0.46, 10, 8), "#3b2a1c", 0, 9.42, 0.42, 0, 0, 0, 0.92, 0.85, 0.62), parte(new T.ConeGeometry(0.34, 0.6, 8), "#3b2a1c", 0, 9.0, 0.58, Math.PI, 0, 0, 1, 1, 0.6)] : []),
+    ...(posa === "bastone" ? [parte(GC(0.13, 0.15, 12.5, 6), "#6b4a2b", 1.55, 6.1, 1.5, 0, 0, -0.04), parte(new T.TorusGeometry(0.55, 0.13, 5, 10, Math.PI * 1.3), "#6b4a2b", 1.85, 12.3, 1.5, 0, 0, 0.3)] : []),
+  ]));
+  const G_VELO = (lungo = false) => geo("velo|" + lungo, () => senzaColore(unisci([
+    parte(new T.SphereGeometry(0.86, 14, 4, 0, Math.PI * 2, 0, Math.PI * 0.26), "#fff", 0, 9.95, -0.05, -0.12, 0, 0, 1, 1.12, 1.05),
+    parte(new T.SphereGeometry(0.86, 14, 5, Math.PI / 2 + 1.15, Math.PI * 2 - 2.3, Math.PI * 0.26, Math.PI * 0.34), "#fff", 0, 9.95, -0.05, -0.12, 0, 0, 1, 1.12, 1.05),
+    parte(new T.CylinderGeometry(0.86, lungo ? 1.55 : 1.25, lungo ? 3.6 : 1.8, 14, 1, true, 1.0, Math.PI * 2 - 2.0), "#fff", 0, lungo ? 8.25 : 9.1, -0.08),
+    ...(lungo ? [] : [parte(new T.TorusGeometry(0.84, 0.09, 5, 16), "#fff", 0, 10.3, -0.05, Math.PI / 2 + 0.12)]),
+  ])));
+  const SCURI_MAT = () => M("#ffffff", { vertexColors: true, roughness: 0.75 });
   function P(col = "#7a2f24", s = 1, opt = {}) {
     const g = new T.Group(), velo = opt.velo || VESTI[Math.floor(R() * VESTI.length)], pelle = opt.pelle || PELLI[Math.floor(R() * PELLI.length)];
-    g.add(mesh(G_VESTE(), M(col, { tex: "stoffa", roughness: 0.95 })), mesh(G_TESTA(), M(pelle, { roughness: 0.7 })), mesh(G_MANI(), M(pelle, { roughness: 0.7 })));
-    if (opt.velo !== false) g.add(mesh(G_VELO(), M(velo, { tex: "stoffa", roughness: 0.95 })));
-    g.add(mesh(GC(1.75, 1.75, 0.5, 12), M("#3a2a1a"), 0, 4.6, 0));
-    if (opt.bastone) { const b = mesh(GC(0.28, 0.28, 13, 5), M("#6b4a2b"), 2.6, 6, 0.9); b.rotation.z = -0.08; g.add(b); }
-    if (opt.corona) { const c = mesh(new T.TorusGeometry(1.2, 0.35, 5, 10), M("#e0b040", { metalness: 0.9, roughness: 0.3 }), 0, 10.1, 0); c.rotation.x = Math.PI / 2; g.add(c); }
+    const donna = opt.donna !== undefined ? opt.donna : R() < 0.4, posa = opt.bastone ? "bastone" : opt.posa || (R() < 0.15 ? "alzato" : "giunte");
+    g.add(mesh(G_VESTE(posa), M(col, { tex: "stoffa", roughness: 0.95 })), mesh(G_PELLE(posa), M(pelle, { roughness: 0.62 })), mesh(G_SCURI(!donna && opt.velo !== false, posa), SCURI_MAT()));
+    if (opt.velo !== false) { g.add(mesh(G_VELO(donna), M(velo, { tex: "stoffa", roughness: 0.95, side: T.DoubleSide }))); g.add(mesh(G_MANTO(), M(opt.manto || VESTI[Math.floor(R() * VESTI.length)], { tex: "stoffa", roughness: 0.97, side: T.DoubleSide }))); }
+    else g.add(mesh(new T.SphereGeometry(0.8, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), M(opt.capelli || "#c8a060", { roughness: 0.8 }), 0, 9.95, -0.08));
+    if (opt.corona) { const c = mesh(new T.CylinderGeometry(0.82, 0.78, 0.45, 12, 1, true), M("#e0b040", { metalness: 0.9, roughness: 0.3, side: T.DoubleSide }), 0, 10.6, 0); g.add(c); }
     g.rotation.y = R() * 0.6 - 0.3; if (s !== 1) g.scale.setScalar(s); return g;
+  }
+  const tempoMare = { value: 0 };
+  // Muro d'acqua: sezione con cresta che si arriccia verso il passaggio, estrusa con onde e rastremata alle estremità.
+  function MuroAcqua(seme) {
+    const PR = [[-24, 4], [-19, 4.6], [-14, 6.5], [-10, 13], [-6.5, 21], [-3, 27.5], [0.5, 31.5], [3.5, 32.5], [6, 31], [6.8, 28.8], [5.6, 27.3], [3.4, 27.2], [2.2, 25], [1.4, 19], [0.8, 11], [0.4, 4], [0, -2]];
+    const NU = 64, NZ = 90, L = 74, pos = [], col = [], idx = [], c = new T.Color();
+    const cProf = new T.Color("#031a2c"), cMedio = new T.Color("#073a5c"), cAlto = new T.Color("#0f6a8a"), cChiaro = new T.Color("#3fb0bc"), cSchiuma = new T.Color("#f2fbff");
+    const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const curva = new T.SplineCurve(PR.map(([a, b]) => new T.Vector2(a, b))), pts = curva.getSpacedPoints(NU - 1);
+    for (let j = 0; j < NZ; j++) {
+      const z = -L / 2 + (j / (NZ - 1)) * L, k = 1 - sm(L / 2 - 12, L / 2, Math.abs(z));
+      const onda = Math.sin(z * 0.21 + seme) * 1.6 + Math.sin(z * 0.53 + seme * 2) * 0.7 + Math.sin(z * 1.3 + seme) * 0.25;
+      for (let i = 0; i < NU; i++) {
+        const u = i / (NU - 1), [px, py] = [pts[i].x, pts[i].y];
+        const cresta = sm(10, 30, py) * (px > -4 ? 1 : 0.6);
+        let x = px + cresta * (Math.sin(z * 0.37 + py * 0.15 + seme) * 0.9 + Math.sin(z * 0.9 - py * 0.4) * 0.35) + (px > 0 ? Math.sin(py * 0.7 + z * 0.6) * 0.25 : 0);
+        let y = 4 + (py + onda * sm(14, 30, py) - 4) * (0.08 + 0.92 * k);
+        x = x * (0.45 + 0.55 * k);
+        pos.push(x, y, z);
+        const h = y / 32; c.copy(cProf).lerp(cMedio, sm(0, 0.35, h)).lerp(cAlto, sm(0.3, 0.75, h)).lerp(cChiaro, sm(0.75, 0.95, h));
+        const sch = sm(0.42, 0.52, u) * (1 - sm(0.62, 0.72, u)) * (0.6 + 0.4 * Math.sin(z * 1.7 + seme * 3)) + (u > 0.8 && y < 2 ? 0.6 : 0) + sm(0.9, 1.4, Math.sin(z * 0.8 + py * 0.5 + seme) + Math.sin(z * 2.3) * 0.5) * sm(20, 30, py) * 0.35;
+        c.lerp(cSchiuma, Math.min(1, sch)); col.push(c.r, c.g, c.b);
+      }
+    }
+    for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NU - 1; i++) { const a = j * NU + i, b = a + NU; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new T.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+    const uv = new Float32Array((pos.length / 3) * 2); for (let q = 0; q < pos.length / 3; q++) { uv[q * 2] = pos[q * 3 + 2] / 22; uv[q * 2 + 1] = pos[q * 3 + 1] / 22 + pos[q * 3] / 40; } g.setAttribute("uv", new T.BufferAttribute(uv, 2));
+    const m = regMat(new T.MeshPhysicalMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.18, metalness: 0, clearcoat: 0, specularIntensity: 0.35, transparent: true, opacity: 0.88, side: T.DoubleSide, normalMap: TEX.acqua.normal, normalScale: new T.Vector2(0.22, 0.22), envMapIntensity: 0.15 }), 10);
+    m.onBeforeCompile = (sh) => { sh.uniforms.uTempo = tempoMare; sh.vertexShader = "uniform float uTempo;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n float hh = smoothstep(8.0, 32.0, position.y);\n transformed.x += hh * (sin(uTempo * 1.3 + position.z * 0.25) * 0.45 + sin(uTempo * 2.1 + position.z * 0.7 + position.y * 0.3) * 0.2);\n transformed.y += hh * sin(uTempo * 1.7 + position.z * 0.33) * 0.35;"); };
+    m.customProgramCacheKey = () => "muroacqua";
+    const gr = new T.Group(), w = mesh(g, m, 0, 0, 0, false); w.receiveShadow = false; w.renderOrder = 2; gr.add(w);
+    // pesci visibili dentro l'acqua
+    const r = rng(seme * 17), pesci = [];
+    for (let i = 0; i < 16; i++) { const y = 7 + r() * 16, z = (r() - 0.5) * 50, x = -2.5 - r() * 6 * (1 - y / 32); pesci.push(parte(GS(0.6, 8, 6), r() < 0.3 ? "#c8a040" : "#2a4658", x, y, z, 0, r() < 0.5 ? 0 : Math.PI, 0, 0.45, 0.55, 1.6), parte(new T.ConeGeometry(0.45, 0.8, 4), "#2a4658", x, y, z + (r() < 2 ? 1.1 : -1.1), Math.PI / 2)); }
+    gr.add(mesh(unisci(pesci), MV(), 0, 0, 0, false));
+    // spruzzi di schiuma sulla cresta
+    const sp = []; for (let i = 0; i < 70; i++) { const z = (r() - 0.5) * 58, k = 1 - Math.max(0, (Math.abs(z) - 25) / 12); sp.push(parte(new T.IcosahedronGeometry(0.25 + r() * 0.45, 0), "#f4fbff", 4 + r() * 3.5, (27 + r() * 6) * k + 4 * (1 - k), z)); }
+    gr.add(mesh(unisci(sp), M("#ffffff", { vertexColors: true, roughness: 0.5, transparent: true, opacity: 0.85 }), 0, 0, 0, false));
+    return gr;
   }
   const Seduto = (col) => { const g = P(col); g.scale.set(1, 0.62, 1); return g; };
   const G_ALA = () => geo("ala", () => { const sh = new T.Shape(); sh.moveTo(0, 0); sh.quadraticCurveTo(4, 3, 6.5, 1); sh.quadraticCurveTo(4, -1, 0, -3); sh.lineTo(0, 0); return new T.ShapeGeometry(sh); });
   function Angelo() {
-    const g = P("#f6f3ea", 1, { velo: false, pelle: "#f0d2b0" });
-    const al = mesh(GS(1.75, 10, 6), M("#ffe9a0", { emissive: "#ffd060", emissiveIntensity: 0.6 }), 0, 10.8, 0); al.scale.set(1, 0.18, 1); g.add(al);
-    [-1, 1].forEach((s) => { const a = mesh(G_ALA(), M("#ffffff", { side: T.DoubleSide, roughness: 0.6 }), s, 6.5, -1.6); a.rotation.y = s > 0 ? -0.5 : Math.PI + 0.5; g.add(a); });
+    const g = P("#f6f3ea", 1, { velo: false, pelle: "#f0d2b0", posa: "giunte" });
+    const al = mesh(new T.TorusGeometry(0.85, 0.12, 6, 18), M("#ffe9a0", { emissive: "#ffd060", emissiveIntensity: 1.2 }), 0, 11.15, -0.1); al.rotation.x = Math.PI / 2 - 0.2; g.add(al);
+    [-1, 1].forEach((s) => { const a = mesh(G_ALA(), M("#ffffff", { side: T.DoubleSide, roughness: 0.6 }), s * 0.3, 7.2, -0.9); a.rotation.y = s > 0 ? -0.5 : Math.PI + 0.5; g.add(a); });
     return g;
   }
   const MV = () => M("#ffffff", { vertexColors: true, roughness: 0.9 });
@@ -832,10 +915,15 @@
     put(Cammello(), 350, 400, { rot: 1.5, info: "Carovana di mercanti" }); put(Cammello(), 352, 412, { rot: 1.5 });
     // 10 · Esodo
     tappa(10);
-    { const mm = regMat(new T.MeshPhysicalMaterial({ color: "#2a7aa0", roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.72, normalMap: TEX.acqua.normal, normalScale: new T.Vector2(0.6, 0.6) }), 10); [383, 427].forEach((x) => put(info(mesh(GB(18, 30, 70), mm), "Muro d'acqua del Mar Rosso · resina/silicone"), x, 285, { dy: 13 })); }
+    [[383, 0, 3], [427, Math.PI, 7]].forEach(([x, rot, seme]) => put(info(MuroAcqua(seme), "Muro d'acqua del Mar Rosso · resina epossidica colata + silicone per le onde"), x, 285, { rot, dy: -2, h: Math.min(hAt(x, 285), hAt(405, 285)) }));
+    { const g = new T.Group(); const mBag = M("#5e4e38", { roughness: 0.55, metalness: 0 });
+      for (let i = 0; i < 26; i++) g.add(mesh(GS(0.5 + R() * 1.1, 7, 5), M(["#c06a4a", "#d8c8a8", "#8a5a6a", "#e0a080"][i % 4], { roughness: 0.6 }), (R() - 0.5) * 22, 0.1, (R() - 0.5) * 66));
+      for (let i = 0; i < 18; i++) { const a = mesh(GC(0.06, 0.18, 1.5 + R() * 2, 4), M("#3a4a26", { roughness: 0.8 }), (R() < 0.5 ? -1 : 1) * (9 + R() * 2.5), 0.8, (R() - 0.5) * 60); a.rotation.z = (R() - 0.5) * 0.6; g.add(a); }
+      const pozza = mesh(new T.CircleGeometry(1, 20), mBag, 0, 0.15, 0); pozza.rotation.x = -Math.PI / 2; pozza.scale.set(13, 34, 1); g.add(pozza);
+      put(info(g, "Fondale bagnato: conchiglie, coralli e alghe · vernice lucida"), 405, 285, { h: hAt(405, 285) }); }
     put(Cespuglio(1.2), 392, 268, { info: "Roveto ardente · Ø 1,5 cm" }); put(Fuoco(0.9), 392, 268, { dy: 3 });
     put(P("#6a3a2a", 1.05, { bastone: true }), 405, 252, { info: "Mosè col bastone · 1 cm" });
-    lungo(10, -26, 28, 6, (x, y, r) => { put(P(colR()), x - 3, y, { rot: r, info: "Il popolo che attraversa · 1 cm" }); put(P(colR()), x + 3, y + 2, { rot: r }); });
+    lungo(10, -26, 28, 6, (x, y, r) => { put(P(colR()), x - 3, y, { rot: r + Math.PI / 2, info: "Il popolo che attraversa · 1 cm" }); put(P(colR(), 1, { bastone: R() < 0.3 }), x + 3, y + 2, { rot: r + Math.PI / 2 }); });
     // 11 · Sinai
     tappa(11);
     put(P("#8a3b2a", 1, { bastone: true }), 400, 152, { info: "Mosè sul Sinai · 1 cm" });
@@ -987,9 +1075,18 @@
     for (let i = 0; i < 700; i++) { const x = r() * 800, y = r() * 500, sl = Math.abs(hAt(x + 3, y) - hAt(x - 3, y)) + Math.abs(hAt(x, y + 3) - hAt(x, y - 3)); if (sl > 5 && libero(x, y, 18, 8)) L.roccia.push([x, y, hAt(x, y) - 1, r() * 6, 1.5 + r() * 3]); }
     for (let q = 0; q < CP.length; q += 3) { const p = CP[q], a = dirAt(q) + Math.PI / 2, s = r() < 0.5 ? -1 : 1, d = 16 + r() * 4, x = p[0] + Math.cos(-a) * d * s, y = p[1] + Math.sin(-a) * d * s; if (inCasella(x, y) < 0) L.sasso.push([x, y, hAt(x, y) - 0.3, r() * 6, 0.6 + r() * 0.8]); }
     const mVeste = M("#ffffff", { tex: "stoffa", roughness: 0.95 });
-    inst(G_VESTE(), mVeste, L.persona, true);
-    inst(G_TESTA(), M(PELLI[1], { roughness: 0.7 }), L.persona, false);
-    inst(G_VELO(), mVeste, L.persona.map((a) => [a[0], a[1], a[2], a[3], a[4], a[6]]), true);
+    { const mManto = M("#ffffff", { tex: "stoffa", roughness: 0.97, side: T.DoubleSide }), mPelle = M("#ffffff", { roughness: 0.62 }), mScuri = SCURI_MAT();
+      const TIPI = [["giunte", false], ["giunte", true], ["bastone", false], ["alzato", false]];
+      TIPI.forEach(([posa, donna], k) => {
+        const arr = L.persona.filter((a, i) => (a[7] !== undefined ? a[7] : (i * 7919) % 10 < 4 ? 1 : (i * 31) % 10 < 3 ? 2 : (i * 13) % 10 < 1 ? 3 : 0) === k);
+        if (!arr.length) return;
+        inst(G_VESTE(posa), mVeste, arr, true);
+        inst(G_MANTO(), mManto, arr.map((a) => [a[0], a[1], a[2], a[3], a[4], a[6]]), true);
+        inst(G_VELO(donna), mManto, arr.map((a, i) => [a[0], a[1], a[2], a[3], a[4], donna ? a[6] : VESTI[(i * 5) % VESTI.length]]), true);
+        inst(G_PELLE(posa), mPelle, arr.map((a, i) => [a[0], a[1], a[2], a[3], a[4], PELLI[(i * 3 + k) % PELLI.length]]), true, false);
+        inst(G_SCURI(!donna, posa), mScuri, arr, false, false);
+      });
+    }
     inst(G_PECORA(), MV(), L.pecora);
     L.albero.forEach((a, v) => inst(G_ALBERO(v), MFOG(), a));
     L.palma.forEach((a, v) => inst(G_PALMA(v), MVEG(), a));
@@ -1204,6 +1301,7 @@
     zampillo.scale.set(1, 1 + Math.sin(t * 7) * 0.2, 1);
     if (gSotto.visible) gocce.forEach((g) => { g.userData.u = (g.userData.u + dt * 0.06) % 1; g.position.copy(tuboCurva.getPointAt(g.userData.u)); });
     if (erbaMat) erbaMat.userData.tempo.value = t;
+    tempoMare.value = t;
     animaFuochi(t, dt);
     STELLE.forEach((s, i) => (s.rotation.y = t * 0.6 + i));
     const O = ORA[oraCorr], k = Math.min(1, dt * 1.6);
@@ -1213,7 +1311,7 @@
     PUNTI.forEach((p) => (p.intensity = oraVal.luci * 2.2 * (p.userData.fuoco ? 0.75 + Math.random() * 0.5 : 1)));
     const puls = 0.5 + 0.5 * Math.sin(t * 3.2), f = ui.fase;
     mats.forEach((m) => { const ud = m.userData; if (!ud.em0 || ud.fase === undefined) return; if (ud.fase === f && f < 14 && f !== 9 && f !== 11) m.emissive.copy(ud.em0).lerp(ORO, 0.08 + puls * 0.14); else m.emissive.copy(ud.em0); });
-    if (volo) { const q = ease(Math.min(1, (now - volo.t0) / volo.dur)); camera.position.lerpVectors(volo.p0, volo.p1, q); controls.target.lerpVectors(volo.t0v, volo.t1, q); if (q >= 1) volo = null; }
+    if (volo) { const q = ease(Math.max(0, Math.min(1, (now - volo.t0) / volo.dur))); camera.position.lerpVectors(volo.p0, volo.p1, q); controls.target.lerpVectors(volo.t0v, volo.t1, q); if (q >= 1) volo = null; }
     if (tour && tour.tipo === "fiume") {
       const u = Math.min(1, (now - tour.t0) / tour.dur), p = tour.curva.getPointAt(u), q = tour.curva.getPointAt(Math.min(1, u + 0.025));
       camera.position.copy(p).add(new T.Vector3(0, 6, 0)); controls.target.copy(q);
@@ -1264,6 +1362,7 @@
   const API = {
     fase(f) { const prima = ui.fase; ui.fase = f; aggiornaVisibilita(true, prima); },
     opzioni(o) { Object.assign(ui, o); if (o.misura === false && gMisura) { gMisura.clear(); puntoA = null; } aggiornaVisibilita(false); },
+    guarda: (a, b, c, d, e, f) => vola(V(a, b, hAt(a, b) + c), V(d, e, hAt(d, e) + f), 10),
     vista, volaTappa, tourFiume, tourTappe, fermaTour,
     esploso(v) { ui.esploso = v ? 1 : 0; },
     ora(n) { if (centralina) { clearInterval(centralina); centralina = null; } oraCorr = n; },

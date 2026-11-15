@@ -152,10 +152,18 @@
     if (!e.target.dataset.id) return;
     spunte[e.target.dataset.id] = e.target.checked; salva("spunte", spunte); aggiornaProgresso();
   });
-  $("#azzera").addEventListener("click", () => {
-    if (!confirm("Vuoi togliere tutte le spunte?")) return;
+  let azzeraTimer;
+  $("#azzera").addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    if (!btn.dataset.conferma) { // primo clic: chiede conferma sul pulsante stesso
+      btn.dataset.conferma = "1"; btn.textContent = "Sicuro? Tocca di nuovo";
+      clearTimeout(azzeraTimer); azzeraTimer = setTimeout(() => { delete btn.dataset.conferma; btn.textContent = "Azzera le spunte"; }, 3000);
+      return;
+    }
+    delete btn.dataset.conferma; btn.textContent = "Azzera le spunte";
     spunte = {}; salva("spunte", spunte); $$("#lista-materiali input").forEach((i) => (i.checked = false)); aggiornaProgresso();
   });
+  if (window.self !== window.top) $("#stampa").hidden = true; // dentro un riquadro la stampa non è disponibile
   $("#stampa").addEventListener("click", () => window.print());
   aggiornaProgresso();
 

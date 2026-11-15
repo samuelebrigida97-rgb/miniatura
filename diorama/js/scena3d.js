@@ -452,6 +452,7 @@
     costruisciRiempimento(); costruisciTargheESfondo(); preparaInterazione();
     stato("Accendo il cielo…"); await pausa();
     impostaTerreno("schiuma", false);
+    mats.forEach((m) => { if (m.isMeshStandardMaterial) m.envMapIntensity = m.isMeshPhysicalMaterial ? 1 : m.metalness > 0.5 ? 0.8 : 0.32; });
     aggiornaCielo(true);
     ridimensiona(); new ResizeObserver(ridimensiona).observe(wrap);
     { const v = VISTE.davanti, f = fattore(); camera.position.copy(v[1].clone().add(v[0].clone().sub(v[1]).multiplyScalar(f))); controls.target.copy(v[1]); }
@@ -951,7 +952,7 @@
   try { ui.miniatura = localStorage.getItem("diorama-miniatura") !== "0"; } catch (e) {}
   const ORA = {
     alba:     { el: 7, az: 110, sole: 2.0, sc: "#ffb27a", hemi: 0.25, luci: 0.6, esp: 1.0, notte: 0 },
-    giorno:   { el: 52, az: 155, sole: 2.7, sc: "#fff4e2", hemi: 0.35, luci: 0, esp: 0.92, notte: 0 },
+    giorno:   { el: 48, az: 155, sole: 2.4, sc: "#fff1dc", hemi: 0.2, luci: 0, esp: 0.8, notte: 0 },
     tramonto: { el: 5, az: 250, sole: 1.9, sc: "#ff8c55", hemi: 0.22, luci: 0.7, esp: 1.0, notte: 0 },
     notte:    { el: -14, az: 290, sole: 0, sc: "#9fb6ff", hemi: 0.06, luci: 1, esp: 1.15, notte: 1 },
   };
@@ -1110,7 +1111,7 @@
     if (composer) {
       const dist = camera.position.distanceTo(controls.target), on = ui.miniatura && !tour && dist > 140;
       tiltH.enabled = tiltV.enabled = on;
-      const amt = Math.min(5, Math.max(1.5, dist / 180));
+      const amt = Math.min(3, Math.max(1, dist / 260));
       tiltH.uniforms.h.value = amt / wrap.clientWidth; tiltV.uniforms.v.value = amt / wrap.clientHeight; tiltH.uniforms.r.value = tiltV.uniforms.r.value = 0.52;
       composer.render(dt);
     } else renderer.render(scene, camera);

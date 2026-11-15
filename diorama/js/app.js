@@ -76,6 +76,7 @@
     $("#next").disabled = fase === FASI.length;
     $$("#pallini button").forEach((b, i) => { b.classList.toggle("fatto", i + 1 < fase); b.classList.toggle("ora", i + 1 === fase); b.setAttribute("aria-current", i + 1 === fase ? "step" : "false"); });
     salva("fase", fase);
+    window.faseCorrente = fase;
     if (window.Scena3D) window.Scena3D.fase(fase);
     history.replaceState(null, "", "#fase-" + fase);
     aggiornaTabellone();

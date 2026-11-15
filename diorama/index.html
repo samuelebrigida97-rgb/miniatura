@@ -54,7 +54,10 @@
                 <button data-ora="alba">Alba</button><button data-ora="giorno" aria-pressed="true">Giorno</button><button data-ora="tramonto">Tramonto</button><button data-ora="notte">Notte</button><button id="b-centralina">⟳ Centralina</button>
               </div>
               <div class="gr"><span>Strumenti</span>
-                <button id="b-esploso" aria-pressed="false">Esploso</button><button id="b-misura" aria-pressed="false">📏 Misura</button><button id="b-full">⛶ Schermo intero</button>
+                <button id="b-esploso" aria-pressed="false">Esploso</button><button id="b-misura" aria-pressed="false">📏 Misura</button><button id="b-mini" aria-pressed="true">Effetto miniatura</button><button id="b-full">⛶ Schermo intero</button>
+              </div>
+              <div class="gr"><span>Qualità</span>
+                <select id="qualita" aria-label="Qualità grafica"><option value="alta">Alta (computer)</option><option value="media">Media (telefono)</option><option value="bassa">Bassa (veloce)</option></select>
               </div>
             </div>
             <div class="board-wrap solo2d" id="board-wrap"></div>
@@ -141,6 +144,7 @@
   <script src="js/board.js"></script>
   <script src="js/vendor/three.min.js"></script>
   <script src="js/vendor/OrbitControls.js"></script>
+  <script src="js/vendor/three-extra.js"></script>
   <script src="js/app.js"></script>
   <script src="js/scena3d.js"></script>
   <script src="js/collega3d.js"></script>

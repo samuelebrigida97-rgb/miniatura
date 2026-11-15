@@ -14,30 +14,29 @@
   window.impostaModo = impostaModo;
   $("#m3d").addEventListener("click", () => impostaModo("3d"));
   $("#m2d").addEventListener("click", () => impostaModo("2d"));
-  if (!window.Scena3D) {
-    $("#m3d").disabled = true; $("#m3d").title = "Il 3D non è disponibile su questo dispositivo";
-    impostaModo("2d"); return;
-  }
-  const S = window.Scena3D;
-  $("#carica3d").remove();
-  $$("[data-vista]").forEach((b) => b.addEventListener("click", () => S.vista(b.dataset.vista)));
-  $("#t-fiume").addEventListener("click", () => S.tourFiume());
-  $("#t-tappe").addEventListener("click", () => S.tourTappe());
-  $("#t-stop").addEventListener("click", () => S.fermaTour());
+  if (!window.Scena3D) { $("#m3d").disabled = true; $("#m3d").title = "Il 3D non è disponibile su questo dispositivo"; impostaModo("2d"); return; }
+  const S = () => window.Scena3D;
+  $$("[data-vista]").forEach((b) => b.addEventListener("click", () => S().vista(b.dataset.vista)));
+  $("#t-fiume").addEventListener("click", () => S().tourFiume());
+  $("#t-tappe").addEventListener("click", () => S().tourTappe());
+  $("#t-stop").addEventListener("click", () => S().fermaTour());
   document.addEventListener("diorama3d:tour", (e) => { $("#t-stop").hidden = !e.detail; });
-  $$("[data-ora]").forEach((b) => b.addEventListener("click", () => { S.ora(b.dataset.ora); pressa("[data-ora]", b); $("#b-centralina").setAttribute("aria-pressed", "false"); }));
+  $$("[data-ora]").forEach((b) => b.addEventListener("click", () => { S().ora(b.dataset.ora); pressa("[data-ora]", b); $("#b-centralina").setAttribute("aria-pressed", "false"); }));
   document.addEventListener("diorama3d:ora", (e) => pressa("[data-ora]", $(`[data-ora="${e.detail}"]`)));
-  $("#b-centralina").addEventListener("click", (e) => e.currentTarget.setAttribute("aria-pressed", String(S.centralina())));
-  $("#b-esploso").addEventListener("click", (e) => { const on = e.currentTarget.getAttribute("aria-pressed") !== "true"; e.currentTarget.setAttribute("aria-pressed", String(on)); S.esploso(on); if (on) S.vista("esploso"); });
-  $("#b-misura").addEventListener("click", (e) => { const on = e.currentTarget.getAttribute("aria-pressed") !== "true"; e.currentTarget.setAttribute("aria-pressed", String(on)); S.opzioni({ misura: on }); });
+  $("#b-centralina").addEventListener("click", (e) => e.currentTarget.setAttribute("aria-pressed", String(S().centralina())));
+  $("#b-esploso").addEventListener("click", (e) => { const on = e.currentTarget.getAttribute("aria-pressed") !== "true"; e.currentTarget.setAttribute("aria-pressed", String(on)); S().esploso(on); if (on) S().vista("esploso"); });
+  $("#b-misura").addEventListener("click", (e) => { const on = e.currentTarget.getAttribute("aria-pressed") !== "true"; e.currentTarget.setAttribute("aria-pressed", String(on)); S().opzioni({ misura: on }); });
+  $("#b-mini").addEventListener("click", (e) => { const on = e.currentTarget.getAttribute("aria-pressed") !== "true"; e.currentTarget.setAttribute("aria-pressed", String(on)); S().miniatura(on); });
+  $("#qualita").value = S().qualita || "alta";
+  $("#qualita").addEventListener("change", (e) => S().impostaQualita(e.target.value));
   $("#b-full").addEventListener("click", () => {
-    const el = card;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else if (el.requestFullscreen) el.requestFullscreen().catch(() => card.classList.toggle("pseudo-full"));
+    else if (card.requestFullscreen) card.requestFullscreen().catch(() => card.classList.toggle("pseudo-full"));
     else card.classList.toggle("pseudo-full");
   });
   impostaModo(modo);
-  const f = +((location.hash.match(/fase-(\d+)/) || [])[1] || 0);
-  S.fase(f || +(document.querySelector("#contatore").textContent.match(/\d+/) || [1])[0]);
-  S.opzioni({ focus: $("#opt-focus").checked, sotto: $("#opt-sotto").checked });
+  document.addEventListener("diorama3d:pronta", () => {
+    $("#b-mini").setAttribute("aria-pressed", String(S().miniaturaAttiva()));
+    S().opzioni({ focus: $("#opt-focus").checked, sotto: $("#opt-sotto").checked });
+  });
 })();

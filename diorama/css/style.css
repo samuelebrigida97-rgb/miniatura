@@ -235,7 +235,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
 .vista3d { position: relative; width: 100%; aspect-ratio: 16 / 10; max-height: 74vh; border-radius: 12px; overflow: hidden; background: #bcd6ee; touch-action: none; }
 .vista3d canvas { display: block; width: 100% !important; height: 100% !important; }
 @media (max-width: 700px) { .vista3d { aspect-ratio: 1 / 1.05; } }
-.carica3d { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600; color: #2a3a5c; }
+.carica3d { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600; color: #fff; background: radial-gradient(circle at 50% 40%, #3a5a8a, #141c30); z-index: 4; padding: 16px; text-align: center; }
+.bar3d select { font: 500 .8rem system-ui, sans-serif; border: 1px solid var(--bordo); background: var(--bg); color: var(--ink); border-radius: 999px; padding: 5px 10px; min-height: 32px; }
 .board-card:fullscreen { background: var(--carta); padding: 10px; display: flex; flex-direction: column; overflow: auto; }
 .board-card:fullscreen .vista3d, .board-card.pseudo-full .vista3d { aspect-ratio: auto; height: calc(100vh - 170px); max-height: none; }
 .board-card.pseudo-full { position: fixed; inset: 0; z-index: 50; border-radius: 0; overflow: auto; }

@@ -26,7 +26,7 @@
   /* ---------------- qualità grafica ---------------- */
   const mobile = matchMedia("(pointer: coarse)").matches || innerWidth < 700;
   let QN = mobile ? "media" : "alta"; try { QN = localStorage.getItem("diorama-qualita") || QN; } catch (e) {}
-  const Q = { alta: { pr: 2, ombra: 4096, post: true, erba: 30000, st: 2.5 }, media: { pr: 1.5, ombra: 2048, post: true, erba: 14000, st: 2.5 }, bassa: { pr: 1, ombra: 1024, post: false, erba: 4000, st: 5 } }[QN] || { pr: 1.5, ombra: 2048, post: true, erba: 14000, st: 2.5 };
+  const Q = { alta: { pr: 2, ombra: 4096, post: true, erba: 34000, st: 2, gocce: 90000 }, media: { pr: 1.5, ombra: 2048, post: true, erba: 14000, st: 2.5, gocce: 45000 }, bassa: { pr: 1, ombra: 1024, post: false, erba: 4000, st: 4, gocce: 12000 } }[QN] || { pr: 1.5, ombra: 2048, post: true, erba: 14000, st: 2.5, gocce: 45000 };
   S3.qualita = QN;
 
   /* ---------------- utilità ---------------- */
@@ -396,23 +396,65 @@
   ];
   const MED = [[745, 262], [760, 257], [790, 258], [806, 262], [806, 385], [790, 389], [770, 390], [748, 378], [741, 345], [740, 300]];
   const LAGHI = [{ x: 565, y: 45, rx: 26, ry: 18 }, { x: 445, y: 474, rx: 30, ry: 16 }];
-  function hNat(x, y) {
-    let h = 12 + 2.5 * nz(x, y) + 1.4 * fbm(x * 0.6, y * 0.6);
+  // deformazione del dominio: i contorni dei monti diventano irregolari come in natura
+  const warp = (x, y) => [x + 22 * fbm(x * 0.011 + 3, y * 0.011 - 7), y + 22 * fbm(x * 0.011 - 11, y * 0.011 + 5)];
+  // creste multifrattali: cime affilate, crinali e valli
+  function creste(x, y) { let s = 0, a = 0.55, f = 1, w = 1; for (let o = 0; o < 6; o++) { let n = 1 - Math.abs(nz(x * f * 0.045 + o * 13.1, y * f * 0.045 - o * 7.3)); n = n * n * w; w = Math.min(1, n * 1.9); s += n * a; a *= 0.5; f *= 2.07; } return s; }
+  const smax = (a, b, k) => { const h = Math.max(0, Math.min(1, 0.5 + (b - a) / (2 * k))); return a * (1 - h) + b * h + k * h * (1 - h); };
+  function hMonti(x, y) {
+    let h = 12 + 3.2 * fbm(x * 0.45, y * 0.45) + 1.6 * fbm(x * 1.6 + 9, y * 1.6 - 4);
+    const [wx, wy] = warp(x, y);
     for (const m of MONTI3D) {
-      const dx = (x - m.x) / m.rx, dy = (y - m.y) / m.ry, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy) / (1 + 0.09 * Math.sin(3 * a + m.x) + 0.05 * Math.sin(5 * a + m.y));
-      if (r < 1) { const t = 1 - r; h = Math.max(h, m.f === "altopiano" ? m.h * sstep(0, 0.4, t) + fbm(x, y) * 2 : m.f === "picco" ? m.h * Math.pow(t, 1.15) * (0.84 + 0.1 * ridge(x, y) + 0.08 * fbm(x * 1.7, y * 1.7)) : m.h * sstep(0, 1, t) * (0.92 + 0.08 * fbm(x * 1.3, y * 1.3))); }
+      const dx = (wx - m.x) / m.rx, dy = (wy - m.y) / m.ry, r = Math.hypot(dx, dy);
+      if (r >= 1.05) continue;
+      const t = Math.max(0, 1 - r);
+      let v;
+      if (m.f === "picco") v = m.h * Math.pow(sstep(0, 1, t), 1.25) * (0.42 + 0.7 * creste(x, y));
+      else if (m.f === "altopiano") v = m.h * sstep(0, 0.38, t) * (0.94 + 0.06 * fbm(x * 2, y * 2)) + (1 - sstep(0, 0.3, t)) * t * 18 * creste(x * 1.3, y * 1.3);
+      else v = m.h * sstep(0, 1, t) * (0.72 + 0.4 * creste(x * 0.8 + 50, y * 0.8));
+      h = smax(h, v, 5);
     }
+    return h;
+  }
+  let NATG = null, EROS = null;
+  function hNat(x, y) {
+    let h = NATG ? campH(NATG, x, y) : hMonti(x, y);
     for (const L of LAGHI) { const e = ((x - L.x) / L.rx) ** 2 + ((y - L.y) / L.ry) ** 2; if (e < 1.4) h = lerp(h, 2, sstep(1.4, 0.95, e)); }
     if (x > 730) { let w = dentro(MED, x, y) ? 1 : 0; if (!w) { let b = 1e9; for (const p of MED) b = Math.min(b, Math.hypot(p[0] - x, p[1] - y)); w = (1 - sstep(0, 14, b)) * 0.6; } h = lerp(h, 2, w); }
     const ex = Math.max(Math.abs(x - NJ.x) - 47, 0), ey = Math.max(Math.abs(y - NJ.y) - 47, 0);
     return lerp(h, 10, 1 - sstep(0, 26, Math.hypot(ex, ey)));
   }
-  const HC = {}; TAPPE.forEach((t) => (HC[t.n] = t.n === 23 ? 10 : hNat(t.x, t.y)));
+  // EROSIONE IDRAULICA: gocce di pioggia virtuali scavano canaloni e depositano detriti
+  function erodi(H, W, Hh, gocce, seed) {
+    const r = rng(seed), RAD = 3, pennello = [];
+    let tot = 0; for (let j = -RAD; j <= RAD; j++) for (let i = -RAD; i <= RAD; i++) { const d = Math.hypot(i, j); if (d <= RAD) { const w = 1 - d / RAD; pennello.push([i, j, w]); tot += w; } }
+    pennello.forEach((p) => (p[2] /= tot));
+    const grad = (x, y) => { const i = Math.floor(x), j = Math.floor(y), u = x - i, v = y - j, k = j * W + i; const a = H[k], b = H[k + 1], c = H[k + W], d = H[k + W + 1]; return [a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v, (b - a) * (1 - v) + (d - c) * v, (c - a) * (1 - u) + (d - b) * u]; };
+    for (let n = 0; n < gocce; n++) {
+      let x = 1 + r() * (W - 3), y = 1 + r() * (Hh - 3), dx = 0, dy = 0, vel = 1, acqua = 1, sed = 0;
+      for (let vita = 0; vita < 34; vita++) {
+        const i = Math.floor(x), j = Math.floor(y), u = x - i, v = y - j;
+        const [h, gx, gy] = grad(x, y);
+        dx = dx * 0.06 - gx * 0.94; dy = dy * 0.06 - gy * 0.94; const l = Math.hypot(dx, dy); if (l < 1e-6) break; dx /= l; dy /= l;
+        x += dx; y += dy;
+        if (x < 1 || y < 1 || x >= W - 2 || y >= Hh - 2) break;
+        const dh = grad(x, y)[0] - h, cap = Math.max(-dh * vel * acqua * 4, 0.01);
+        if (sed > cap || dh > 0) {
+          const q = dh > 0 ? Math.min(dh, sed) : (sed - cap) * 0.3; sed -= q; const k = j * W + i;
+          H[k] += q * (1 - u) * (1 - v); H[k + 1] += q * u * (1 - v); H[k + W] += q * (1 - u) * v; H[k + W + 1] += q * u * v;
+        } else {
+          const q = Math.min((cap - sed) * 0.3, -dh);
+          for (const [a, b, w] of pennello) { const ii = i + a, jj = j + b; if (ii < 0 || jj < 0 || ii >= W || jj >= Hh) continue; const c = jj * W + ii, d = Math.min(H[c], q * w); H[c] -= d; sed += d; }
+        }
+        vel = Math.sqrt(Math.max(0, vel * vel + dh * 4)); acqua *= 0.985;
+      }
+    }
+  }
+  const HC = {};
   function hRaw(x, y) { let h = hNat(x, y); for (const t of TAPPE) { const ex = Math.max(0, Math.abs(x - t.x) - 37.5), ey = Math.max(0, Math.abs(y - t.y) - 37.5), d = Math.hypot(ex, ey); if (d < 12) h = lerp(h, HC[t.n], 1 - sstep(0, 12, d)); } return h; }
   const CP = campiona(ROUTE_D, 1), CR = campiona(RIVER_D, 2);
   const IDX = {}; TAPPE.forEach((t) => { let b = 0, bd = 1e9; CP.forEach((p, i) => { const d = (p[0] - t.x) ** 2 + (p[1] - t.y) ** 2; if (d < bd) { bd = d; b = i; } }); IDX[t.n] = b; });
-  const LIV = []; CR.forEach((p, i) => { const tgt = hRaw(p[0], p[1]) - 3.5; LIV.push(i === 0 ? hRaw(p[0], p[1]) - 2 : Math.max(Math.min(5.5, LIV[i - 1]), Math.min(LIV[i - 1] - 0.012, tgt))); });
-  const SALTI3D = []; for (let i = 6; i < CR.length; i++) if (LIV[i - 6] - LIV[i] > 5 && (!SALTI3D.length || i - SALTI3D[SALTI3D.length - 1] > 15)) SALTI3D.push(i);
+  const LIV = [], SALTI3D = [];
   const ST = Q.st, NX = Math.round(800 / ST) + 1, NY = Math.round(500 / ST) + 1;
   const HRAW = new Float32Array(NX * NY), HCAR = new Float32Array(NX * NY), DP = new Float32Array(NX * NY).fill(99), DR = new Float32Array(NX * NY).fill(99), KR = new Int32Array(NX * NY), AO = new Float32Array(NX * NY);
   function campH(arr, x, y) { const fx = Math.min(NX - 1.001, Math.max(0, x / ST)), fy = Math.min(NY - 1.001, Math.max(0, y / ST)), i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j, k = j * NX + i; return lerp(lerp(arr[k], arr[k + 1], u), lerp(arr[k + NX], arr[k + NX + 1], u), v); }
@@ -420,6 +462,18 @@
   const cella = (arr, x, y) => arr[Math.min(NY - 1, Math.max(0, Math.round(y / ST))) * NX + Math.min(NX - 1, Math.max(0, Math.round(x / ST)))];
   function inCasella(x, y) { for (const t of TAPPE) { const dx = Math.abs(x - t.x), dy = Math.abs(y - t.y); if (dx < 37.5 && dy < 37.5) return Math.max(dx, dy); } return -1; }
   function calcolaTerreno() {
+    // 1) forma naturale dei monti + erosione
+    const G = new Float32Array(NX * NY);
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) G[j * NX + i] = hMonti(i * ST, j * ST) / ST;
+    const prima = G.slice();
+    erodi(G, NX, NY, Q.gocce || 40000, 777);
+    for (let j = 1; j < NY - 1; j++) for (let i = 1; i < NX - 1; i++) { const k = j * NX + i; G[k] = G[k] * 0.6 + (G[k - 1] + G[k + 1] + G[k - NX] + G[k + NX]) * 0.1; }
+    EROS = new Float32Array(NX * NY);
+    for (let k = 0; k < NX * NY; k++) { EROS[k] = (G[k] - prima[k]) * ST; G[k] *= ST; }
+    NATG = G;
+    TAPPE.forEach((t) => (HC[t.n] = t.n === 23 ? 10 : hNat(t.x, t.y)));
+    CR.forEach((p, i) => { const tgt = hRaw(p[0], p[1]) - 3.5; LIV.push(i === 0 ? hRaw(p[0], p[1]) - 2 : Math.max(Math.min(5.5, LIV[i - 1]), Math.min(LIV[i - 1] - 0.012, tgt))); });
+    for (let i = 6; i < CR.length; i++) if (LIV[i - 6] - LIV[i] > 5 && (!SALTI3D.length || i - SALTI3D[SALTI3D.length - 1] > 15)) SALTI3D.push(i);
     for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) HRAW[j * NX + i] = hRaw(i * ST, j * ST);
     const rag = Math.ceil(22 / ST);
     const stampa = (pts, arr, k, passo) => { for (let q = 0; q < pts.length; q += passo) { const [px, py] = pts[q], ci = Math.round(px / ST), cj = Math.round(py / ST); for (let j = cj - rag; j <= cj + rag; j++) for (let i = ci - rag; i <= ci + rag; i++) { if (i < 0 || j < 0 || i >= NX || j >= NY) continue; const d = Math.hypot(i * ST - px, j * ST - py), c = j * NX + i; if (d < arr[c]) { arr[c] = d; if (k) KR[c] = q; } } } };
@@ -543,6 +597,7 @@
         c.multiplyScalar(1 / cnt).multiplyScalar(0.88 + 0.16 * n);
         if (Math.hypot((x - 100) / 76, (y - 228) / 92) < 0.97) c.lerp(tmp.set("#3f6a22"), 0.55 * (0.6 + 0.4 * n2));
         c.lerp(tmp.set("#7a7064"), Math.min(0.85, sstep(0.55, 1.4, sl) + sstep(45, 100, h) * 0.6));
+        if (EROS) { const e = EROS[k]; if (e < 0) c.lerp(tmp.set("#6e6252"), Math.min(0.7, sstep(0.3, 3, -e))); else c.lerp(tmp.set("#b59c70"), Math.min(0.55, sstep(0.2, 2, e))); }
         if (Math.hypot((x - 405) / 56, (y - 150) / 78) < 1) c.lerp(tmp.set("#8e5a3e"), sstep(18, 70, h) * 0.85);
         if (Math.hypot((x - 197) / 78, (y - 182) / 150) < 1) c.lerp(tmp.set("#f4f6f8"), sstep(98, 118, h + n * 8) * (1 - sstep(1.4, 2.4, sl)));
         if (dp < 18.5) c.lerp(dp > 15.5 ? tmp.set("#6e5a40") : tmp.set("#a08463").multiplyScalar(0.92 + 0.12 * n), 1 - sstep(16.5, 18.5, dp) * 0.5);

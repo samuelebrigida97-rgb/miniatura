@@ -1122,7 +1122,7 @@
       gPieno.add(im); return im;
     }
     const tiles = TAPPE.map((t) => [t.x, t.y]);
-    const vietati = [...STORIE_POS, [195, 150, 50], [305, 82, 28], [360, 436, 32], [NJ.x, NJ.y, 55], [565, 45, 30], [445, 474, 34], [503, 300, 42], [480, 75, 26], [405, 285, 36], [SORGENTE[0], SORGENTE[1], 24]];
+    const vietati = [...STORIE_POS.map((q) => [q[0], q[1], q[2] + 9]), [195, 150, 50], [305, 82, 28], [360, 436, 32], [NJ.x, NJ.y, 55], [565, 45, 30], [445, 474, 34], [503, 300, 42], [480, 75, 26], [405, 285, 36], [SORGENTE[0], SORGENTE[1], 24]];
     const L = { persona: [], pecora: [], albero: [[], [], [], []], palma: [[], [], []], cipresso: [], ulivo: [[], [], []], tenda: [], casa: [], fiore: [], cespuglio: [[], [], [], []], roccia: [], cammello: [], sasso: [] };
     const tipi = {
       origini: ["albero", "albero", "cespuglio", "fiore", "albero", "pecora", "cespuglio", "roccia", "albero", "fiore"],

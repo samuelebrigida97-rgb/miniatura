@@ -19,7 +19,7 @@
       </div>
     </div>
     <nav class="tabs" role="tablist">
-      <button role="tab" data-view="manuale" aria-selected="true">Manuale</button>
+      <button role="tab" data-view="manuale" aria-selected="true">Montaggio</button>
       <button role="tab" data-view="tappe">Tappe</button>
       <button role="tab" data-view="materiali">Materiali</button>
       <button role="tab" data-view="info">Info</button>
@@ -32,6 +32,9 @@
       <div class="layout">
         <div class="col-board">
           <div class="board-card">
+            <div class="vista3d solo3d" id="vista3d"><div class="carica3d" id="carica3d">Sto costruendo il diorama in 3D…</div><div class="etich3d" id="etich3d" aria-live="polite"></div></div>
+            <details class="strumenti" id="strumenti">
+              <summary>⚙️ Strumenti della vista</summary>
             <div class="toolbar">
               <div class="seg" role="group" aria-label="Tipo di vista">
                 <button id="m3d" aria-pressed="true">3D</button><button id="m2d" aria-pressed="false">Pianta 2D</button>
@@ -42,7 +45,6 @@
               <label class="sw solo2d"><input type="checkbox" id="opt-tilt"><span>Vista inclinata</span></label>
               <label class="sw solo2d"><input type="checkbox" id="opt-num" checked><span>Numeri</span></label>
             </div>
-            <div class="vista3d solo3d" id="vista3d"><div class="carica3d" id="carica3d">Sto costruendo il diorama in 3D…</div></div>
             <div class="bar3d solo3d" id="bar3d">
               <div class="gr"><span>Guarda</span>
                 <button data-vista="davanti">Davanti</button><button data-vista="alto">Dall'alto</button><button data-vista="lato">Di lato</button><button data-vista="vicino">Da vicino</button><button data-vista="sotto">Da sotto</button>
@@ -60,6 +62,7 @@
                 <select id="qualita" aria-label="Qualità grafica"><option value="alta">Alta (computer)</option><option value="media">Media (telefono)</option><option value="bassa">Bassa (veloce)</option></select>
               </div>
             </div>
+            </details>
             <div class="board-wrap solo2d" id="board-wrap"></div>
             <p class="novita" id="novita"></p>
             <p class="hint solo3d">Trascina per girare · due dita o rotellina per ingrandire · tocca una casella o un pezzo per scoprire cos'è.</p><p class="hint solo2d">Tocca una casella per aprire la scheda della tappa.</p>
@@ -67,13 +70,13 @@
 
           <div class="nav-fasi">
             <button class="btn" id="prev" aria-label="Fase precedente">◀ <span>Fase precedente</span></button>
-            <div class="contatore" id="contatore">Fase 1 di 14</div>
+            <div class="centro-fasi"><div class="contatore" id="contatore">Fase 1 di 14</div>
+            <div class="pallini" id="pallini" aria-label="Vai a una fase"></div></div>
             <button class="btn primario" id="next" aria-label="Fase successiva"><span>Fase successiva</span> ▶</button>
           </div>
-          <div class="pallini" id="pallini" aria-label="Vai a una fase"></div>
         </div>
 
-        <article class="col-fase fase-card" id="fase-card" aria-live="polite"></article>
+        <div class="col-fase" id="manuale-lista"></div>
       </div>
     </section>
 
@@ -87,14 +90,19 @@
 
     <!-- ============ MATERIALI ============ -->
     <section id="v-materiali" class="view">
-      <h2>Lista materiali completa</h2>
-      <p class="sub">Spunta quello che hai già comprato: la lista si ricorda le tue scelte su questo dispositivo.</p>
+      <h2>Liste della spesa e da preparare</h2>
+      <p class="sub">Scegli una lista: tutto il diorama, una fase, una tappa o una storia. Spunta quello che hai già: l'app se lo ricorda su questo dispositivo.</p>
+      <div class="scelta-liste" id="scelta-liste"></div>
+      <div class="lista-scelta" id="lista-scelta" hidden></div>
+      <div id="lista-completa">
+      <h3 class="titolo-lista">📦 Lista completa di tutto il diorama</h3>
       <div class="progresso"><div class="barra"><span id="barra"></span></div><b id="perc">0%</b></div>
       <div class="azioni">
         <button class="btn" id="stampa">Stampa la lista</button>
         <button class="btn" id="azzera">Azzera le spunte</button>
       </div>
       <div id="lista-materiali" class="lista-materiali"></div>
+      </div>
     </section>
 
     <!-- ============ INFO ============ -->
@@ -141,6 +149,7 @@
   <footer class="piede">Manuale per uso personale · disegno in scala 1 mm = 1 unità · i testi si modificano in <code>js/data.js</code></footer>
 
   <script src="js/data.js"></script>
+  <script src="js/storie.js"></script>
   <script src="js/board.js"></script>
   <script src="js/vendor/three.min.js"></script>
   <script src="js/vendor/OrbitControls.js"></script>

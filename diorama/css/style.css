@@ -259,3 +259,129 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
 .ante3d-c { width: 100%; height: 240px; border-radius: 12px; overflow: hidden; background: #e9eef5; touch-action: none; }
 .ante3d p { font-size: .8rem; color: var(--ink2); margin: 4px 0 8px; }
 @media (prefers-reduced-motion: reduce) { .didascalia3d i { transition: none; } }
+
+/* =========================================================
+   MANUALE DI MONTAGGIO DA SCORRERE
+   ========================================================= */
+.etich3d { position: absolute; left: 10px; top: 10px; z-index: 3; max-width: calc(100% - 20px); background: rgba(20, 24, 34, .72); color: #fff; font-size: .82rem; padding: 6px 10px; border-radius: 10px; backdrop-filter: blur(6px); pointer-events: none; }
+.etich3d:empty { display: none; }
+.etich3d b { color: #ffd36a; margin-right: 4px; }
+.strumenti { margin-top: 8px; }
+.strumenti > summary { cursor: pointer; font-size: .85rem; font-weight: 600; color: var(--ink2, #6b6257); padding: 6px 2px; list-style: none; }
+.strumenti > summary::-webkit-details-marker { display: none; }
+.strumenti[open] > summary { margin-bottom: 6px; }
+.strumenti .bar3d { margin-top: 6px; }
+.layout .col-fase { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.col-board .vista3d { max-height: 62vh; }
+
+.mont-intro, .fase-sez { background: var(--carta); border: 1px solid var(--bordo); border-radius: var(--r); box-shadow: var(--ombra); padding: 18px; }
+.mont-intro h2 { margin: 0 0 6px; }
+.mont-intro p { margin: 0 0 12px; line-height: 1.5; }
+.mont-intro small, .fase-testa small { color: var(--ink2, #6b6257); font-size: .8rem; }
+.avanz { height: 8px; background: var(--bg); border: 1px solid var(--bordo); border-radius: 99px; overflow: hidden; margin: 10px 0 4px; }
+.avanz.grande { height: 12px; }
+.avanz span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7fae5a, #4f8a2f); transition: width .4s; }
+.fase-sez { scroll-margin-top: 90px; }
+.fase-testa h2 { margin: 10px 0 4px; font-size: 1.5rem; }
+.fase-testa .breve { margin: 0; color: var(--ink2, #6b6257); }
+.novita-fase { background: #fff7df; border: 1px solid #f0d58a; border-radius: 12px; padding: 10px 12px; font-size: .92rem; line-height: 1.45; margin: 14px 0; }
+.novita-fase .evid { display: block; font-size: .8rem; color: #9a6f12; margin-top: 4px; }
+.kit { border: 1px solid var(--bordo); border-radius: 12px; padding: 10px 12px; margin: 12px 0; background: var(--bg); }
+.kit > summary { cursor: pointer; font-weight: 700; }
+.kit > summary small { font-weight: 400; color: var(--ink2, #6b6257); margin-left: 6px; }
+.kit .blocchi { margin-top: 10px; }
+
+/* prima / dopo */
+.primadopo { position: relative; margin: 14px 0 6px; aspect-ratio: 720 / 460; border-radius: 12px; overflow: hidden; background: #cfdbe6; touch-action: pan-y; user-select: none; cursor: ew-resize; }
+.primadopo .pd-img { position: absolute; inset: 0; }
+.primadopo .prima { clip-path: inset(0 calc(100% - var(--x)) 0 0); }
+.primadopo .pd-img img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.pd-linea { position: absolute; top: 0; bottom: 0; left: var(--x); width: 3px; margin-left: -1.5px; background: #fff; box-shadow: 0 0 8px rgba(0,0,0,.4); pointer-events: none; }
+.pd-linea i { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 38px; height: 38px; border-radius: 50%; background: #fff; color: var(--blu); display: grid; place-items: center; font-style: normal; font-weight: 700; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.pd-et { position: absolute; bottom: 8px; font-size: .75rem; font-weight: 700; color: #fff; background: rgba(20, 24, 34, .7); padding: 3px 8px; border-radius: 8px; pointer-events: none; }
+.pd-et.sx { left: 8px; } .pd-et.dx { right: 8px; background: rgba(160, 110, 10, .85); }
+.primadopo input[type=range] { position: absolute; inset: auto 0 0 0; width: 100%; opacity: 0; height: 100%; margin: 0; cursor: ew-resize; pointer-events: none; }
+.primadopo input[type=range]:focus-visible { opacity: .01; }
+.primadopo:focus-within { outline: 3px solid var(--oro); outline-offset: 2px; }
+
+/* passi */
+.passi-lista { list-style: none; padding: 0; margin: 14px 0; display: flex; flex-direction: column; gap: 14px; counter-reset: none; }
+.passo { border: 2px solid var(--bordo); border-radius: 14px; overflow: hidden; background: var(--carta); transition: border-color .25s, box-shadow .25s, transform .25s; }
+.passo.attivo { border-color: var(--oro); box-shadow: 0 0 0 4px rgba(212, 166, 42, .22); }
+.passo.fatto { border-color: #7fae5a; }
+.passo .foto { margin: 0; position: relative; cursor: pointer; }
+.passo .foto figcaption { position: absolute; right: 8px; bottom: 8px; font-size: .72rem; background: rgba(20, 24, 34, .7); color: #fff; padding: 3px 8px; border-radius: 8px; pointer-events: none; }
+.passo .foto.tocca { animation: tocca .6s ease; }
+@keyframes tocca { 50% { transform: scale(.97); } }
+.foto-slot { aspect-ratio: 720 / 460; background: linear-gradient(110deg, #d9e2ea 30%, #eef3f7 50%, #d9e2ea 70%) 0 0 / 300% 100%; animation: luccica 1.6s linear infinite; display: grid; place-items: center; }
+.foto-slot::before { content: "📷 Preparo la foto 3D…"; font-size: .8rem; color: #6a7884; }
+.foto-slot.pronta { animation: none; background: #cfdbe6; }
+.foto-slot.pronta::before { content: none; }
+.foto-slot img { width: 100%; height: 100%; object-fit: cover; display: block; animation: appare .4s ease; }
+.foto-slot img.pianta { object-fit: contain; background: #fffdf8; }
+@keyframes luccica { to { background-position: -300% 0; } }
+@keyframes appare { from { opacity: 0; } }
+.passo-testo { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: start; padding: 12px 14px; }
+.passo-n { width: 36px; height: 36px; border-radius: 50%; background: var(--blu); color: #fff; font-weight: 800; font-size: 1.05rem; display: grid; place-items: center; }
+.passo.attivo .passo-n { background: var(--oro); }
+.passo.fatto .passo-n { background: #4f8a2f; }
+.passo-testo p { margin: 6px 0 0; line-height: 1.5; font-size: 1rem; }
+.fatto-btn { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; gap: 8px; font-size: .88rem; font-weight: 600; cursor: pointer; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--bordo); background: var(--bg); min-height: 36px; }
+.fatto-btn input { width: 18px; height: 18px; accent-color: #4f8a2f; }
+.passo.fatto .fatto-btn { background: #e8f2e3; border-color: #7fae5a; color: #2e5a1c; }
+.passo.fatto .passo-testo p { color: var(--ink2, #6b6257); }
+.prossima { width: 100%; margin-top: 14px; }
+.fine { text-align: center; font-size: 1.05rem; }
+.pallini button.completa { box-shadow: inset 0 0 0 2px #4f8a2f; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .novita-fase { background: #3a3220; border-color: #6a5a2a; }
+  :root:not([data-theme="light"]) .novita-fase .evid { color: #f0c860; }
+  :root:not([data-theme="light"]) .passo.fatto .fatto-btn { background: #26352a; color: #bfe0a8; }
+}
+:root[data-theme="dark"] .novita-fase { background: #3a3220; border-color: #6a5a2a; }
+
+/* telefono / tablet: il 3D resta fermo in alto, i passi scorrono sotto */
+@media (max-width: 960px) {
+  .col-board { position: sticky; top: 0; z-index: 20; margin: 0 -10px; padding: 6px 10px 4px; background: var(--bg); box-shadow: 0 6px 14px -8px rgba(0,0,0,.35); }
+  .col-board .board-card { padding: 6px; }
+  .col-board .vista3d { aspect-ratio: auto; height: 36vh; max-height: none; }
+  .col-board .board-wrap { max-height: 36vh; overflow: auto; }
+  .col-board .novita, .col-board .hint { display: none; }
+  .strumenti { margin-top: 4px; }
+  .strumenti > summary { padding: 2px; font-size: .8rem; }
+  .strumenti[open] { max-height: 38vh; overflow: auto; }
+  .nav-fasi { margin: 6px 0 0; gap: 6px; }
+  .nav-fasi .btn { min-height: 36px; padding: 4px 10px; min-width: 44px; }
+  .nav-fasi .btn span { display: none; }
+  .contatore { display: none; }
+  .nav-fasi { display: grid; grid-template-columns: auto 1fr auto; }
+  .nav-fasi .pallini { order: 0; }
+  .pallini { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding: 4px 2px; scrollbar-width: none; }
+  .pallini::-webkit-scrollbar { display: none; }
+  .pallini button { flex: 0 0 auto; }
+  .fase-sez { scroll-margin-top: 50vh; padding: 14px; }
+  .mont-intro { padding: 14px; }
+}
+.centro-fasi { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+@media (max-width: 960px) { .centro-fasi { align-items: stretch; } }
+
+/* ---------- liste a scelta ---------- */
+.scelta-liste { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 16px; }
+.gruppo-liste { background: var(--carta); border: 1px solid var(--bordo); border-radius: 14px; padding: 10px 12px; }
+.gruppo-liste > summary { cursor: pointer; font-weight: 700; }
+.gruppo-liste > summary small { font-weight: 400; color: var(--ink2); margin-left: 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font: inherit; font-size: .85rem; border: 1px solid var(--bordo); background: var(--bg); color: var(--ink); padding: 7px 12px; border-radius: 999px; cursor: pointer; text-align: left; min-height: 36px; }
+.chip:hover { border-color: var(--blu); }
+.chip[aria-pressed="true"] { background: var(--blu); border-color: var(--blu); color: #fff; }
+.lista-scelta { scroll-margin-top: 12px; }
+.lista-testa { background: var(--carta); border: 2px solid var(--oro); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; }
+.lista-testa h3 { margin: 0 0 8px; }
+.lista-testa h3 small { font-weight: 400; color: var(--ink2); font-size: .8rem; }
+.lista-scelta .gruppo h4 { margin: 12px 0 4px; font-size: .9rem; color: var(--ink2); }
+.lista-scelta .voce small { color: var(--ink2); margin-left: 4px; }
+.storia-txt { margin: 4px 0 6px; line-height: 1.5; font-style: italic; }
+.titolo-lista { margin: 6px 0 10px; }
+.storia-box { background: var(--bg); border: 1px solid var(--bordo); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+.storia-box p { margin: 6px 0 8px; }
+.lista-tappa { width: 100%; margin: 10px 0; }

@@ -848,6 +848,84 @@
     vivi.forEach((v) => g.add(v)); hit.forEach((h) => { g.add(h); HITS.push(h); });
   }
 
+
+  /* ---------------- STORIE IN PIÙ (Sansone, Giona, Elia…) ---------------- */
+  const STORIE_POS = [];
+  const Maiale = () => mesh(G_QUAD("#e7a99c", 4.2, 3.2, "maiale", [parte(GC(0.35, 0.35, 0.3, 8), "#d88a80", 2.75, 2.65, 0, 0, 0, Math.PI / 2)]), MV());
+  const Ariete = () => mesh(G_QUAD("#ece4d4", 4.4, 4.2, "ariete", [parte(new T.TorusGeometry(0.55, 0.2, 5, 10, Math.PI * 1.5), "#6a5a44", 2.6, 4.0, 0.5), parte(new T.TorusGeometry(0.55, 0.2, 5, 10, Math.PI * 1.5), "#6a5a44", 2.6, 4.0, -0.5)]), MV());
+  const MAvorio = () => M("#e8dfc6", { roughness: 0.7 });
+  function Steso(col, opt) { const g = P(col, 1, opt); g.rotation.set(0, 0, Math.PI / 2); g.position.y = 1.4; const w = new T.Group(); w.add(g); return w; }
+  function postoLibero(x0, y0, raggio, rMin = 18, rMax = 75) {
+    const occ = []; Object.values(GT).forEach((g) => g.children.forEach((c) => occ.push([c.position.x + 400, c.position.z + 250, 4])));
+    STORIE_POS.forEach((q) => occ.push(q));
+    let best = null, bs = -1e9;
+    for (let k = 0; k < 420; k++) {
+      const a = k * 2.39996, r = rMin + (rMax - rMin) * ((k * 0.6180339) % 1), x = x0 + Math.cos(a) * r, y = y0 + Math.sin(a) * r;
+      if (x < 12 + raggio || y < 12 + raggio || x > 788 - raggio || y > 488 - raggio || dentro(MED, x, y)) continue;
+      if (TAPPE.some((t) => Math.abs(t.x - x) < 37.5 + raggio * 0.6 && Math.abs(t.y - y) < 37.5 + raggio * 0.6)) continue;
+      let dp = 1e9, dr = 1e9; for (let q = 0; q < CP.length; q += 3) dp = Math.min(dp, Math.hypot(CP[q][0] - x, CP[q][1] - y)); for (let q = 0; q < CR.length; q += 3) dr = Math.min(dr, Math.hypot(CR[q][0] - x, CR[q][1] - y));
+      if (dp < 19 + raggio || dr < 8 + raggio) continue;
+      let dO = 1e9; occ.forEach(([ox, oy, orr]) => (dO = Math.min(dO, Math.hypot(ox - x, oy - y) - orr)));
+      if (dO < raggio + 3) continue;
+      const pend = Math.abs(hAt(x + raggio, y) - hAt(x - raggio, y)) + Math.abs(hAt(x, y + raggio) - hAt(x, y - raggio));
+      if (pend > 9) continue;
+      const sc = -r * 0.5 - pend * 3 + Math.min(dO, 30) * 0.4;
+      if (sc > bs) { bs = sc; best = [x, y]; }
+    }
+    return best;
+  }
+  function storia(id, costruttore, raggio, dove) {
+    const st = STORIE.find((q) => q.id === id); if (!st) return;
+    const t = TAPPE[st.tappa - 1], pos = dove || postoLibero(t.x, t.y, raggio); if (!pos) return;
+    nCorr = st.tappa; gCorr = GT[st.tappa];
+    const o = costruttore(); const txt = `${st.nome} · ${st.rif} (storia in più)`;
+    o.traverse((c) => { if (c.isMesh) { c.userData.info = txt; c.userData.tappa = st.tappa; } });
+    put(info(o, txt), pos[0], pos[1], { rot: pos[2] !== undefined ? pos[2] : R() * 6.28, h: pos[3] });
+    STORIE_POS.push([pos[0], pos[1], raggio]);
+  }
+  function GrandePesce() {
+    const prof = [[0.2, -21], [1.1, -18], [2.4, -13], [4.4, -6], [5.7, 1], [6, 7], [5.6, 12], [4.6, 15.5], [3.9, 16.8]].map(([r, y]) => new T.Vector2(r, y));
+    const corpo = new T.LatheGeometry(prof, 28); corpo.rotateZ(-Math.PI / 2); corpo.scale(1, 0.82, 0.95);
+    const pp = corpo.attributes.position, col = new Float32Array(pp.count * 3), cs = new T.Color("#2d3f52"), cv = new T.Color("#c8c4b4"), cc = new T.Color();
+    for (let i = 0; i < pp.count; i++) { const y = pp.getY(i); cc.copy(cs).lerp(cv, Math.min(1, Math.max(0, (-y + 0.5) / 3.5))); if (y < -1 && Math.sin(pp.getX(i) * 3.2) > 0.6) cc.multiplyScalar(0.82); col.set([cc.r, cc.g, cc.b], i * 3); }
+    corpo.setAttribute("color", new T.BufferAttribute(col, 3));
+    const g = new T.Group(), mv = M("#ffffff", { vertexColors: true, roughness: 0.38 });
+    g.add(mesh(corpo, mv));
+    const bocca = mesh(new T.CircleGeometry(3.9, 20), M("#5a1a22", { roughness: 0.6, side: T.DoubleSide }), 16.8, 0, 0); bocca.rotation.y = Math.PI / 2; bocca.scale.set(1, 0.82, 1); g.add(bocca);
+    const mascella = mesh(new T.SphereGeometry(3.9, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), M("#3a4c5e", { roughness: 0.4, side: T.DoubleSide }), 13.5, -0.6, 0); mascella.scale.set(1.25, 0.55, 0.95); mascella.rotation.z = -0.5; g.add(mascella);
+    const lingua = mesh(GS(1.6, 10, 6), M("#a04050", { roughness: 0.5 }), 15.2, -1.6, 0); lingua.scale.set(1.4, 0.4, 1.2); g.add(lingua);
+    [-1, 1].forEach((z) => { g.add(mesh(GS(0.42, 8, 6), M("#0e0e10", { roughness: 0.2 }), 11.8, 1.9, z * 4.25)); const p = mesh(GS(1, 10, 6), M("#2d3f52", { roughness: 0.4 }), 5, -2.6, z * 5.2); p.scale.set(3.4, 0.35, 1.4); p.rotation.y = z * 0.5; g.add(p); const c = mesh(GS(1, 12, 6), M("#2d3f52", { roughness: 0.4 }), -21.5, 0, z * 2.8); c.scale.set(2.6, 0.35, 3.2); c.rotation.y = -z * 0.55; g.add(c); });
+    const giona = P("#8a6a3a", 0.85, { posa: "alzato", donna: false }); giona.position.set(15.6, -0.6, 0); giona.rotation.y = Math.PI / 2; g.add(giona);
+    const sp = []; const r = rng(77); for (let i = 0; i < 26; i++) { const a = r() * 6.28, rr = r() * 1.6; sp.push(parte(new T.IcosahedronGeometry(0.25 + r() * 0.3, 0), "#f2fbff", 8 + Math.cos(a) * rr, 5 + r() * 6, Math.sin(a) * rr)); }
+    g.add(mesh(unisci(sp), M("#ffffff", { vertexColors: true, roughness: 0.4, transparent: true, opacity: 0.85 }), 0, 0, 0, false));
+    const sch = mesh(new T.RingGeometry(6, 9, 32), M("#eef6f8", { transparent: true, opacity: 0.55, roughness: 0.5 }), 0, 0.1, 0, false); sch.rotation.x = -Math.PI / 2; sch.scale.set(2.6, 1, 1); g.add(sch);
+    return g;
+  }
+  function costruisciStorie() {
+    storia("sansone", () => { const g = new T.Group(), l = Leone(); l.position.set(3, 1.6, 0); l.rotation.set(0, Math.PI, 0.75); g.add(l); const s = P("#7a3a1a", 1.15, { posa: "alzato", donna: false, velo: false, capelli: "#2a1a10" }); s.position.set(-2.5, 0, 0); s.rotation.y = Math.PI / 2; g.add(s); const m = mesh(new T.TorusGeometry(1.1, 0.25, 5, 10, Math.PI), MAvorio(), -1, 0.3, 3); m.rotation.x = -Math.PI / 2; g.add(m, Pietra(9, 1.2, 7, "#9a8a72")); return g; }, 8);
+    storia("gedeone", () => { const g = new T.Group(), v = mesh(new T.IcosahedronGeometry(1, 2), M("#f6f2ea", { roughness: 0.25 }), 0, 0.4, 0); v.scale.set(3, 0.5, 2.2); g.add(v); const gd = Seduto("#5a4a2a"); gd.position.set(-3.5, 0, 0); gd.rotation.y = Math.PI / 2; g.add(gd); for (let i = 0; i < 3; i++) { const s = P(colR(), 1, { posa: "alzato" }); s.position.set(5 + i * 3, 0, -3 + i * 2.5); s.rotation.y = -1.2; g.add(s); const f = Fuoco(0.32); f.position.set(5 + i * 3 + 1.2, 11.2, -3 + i * 2.5 + 0.4); g.add(f); g.add(mesh(GS(0.7, 8, 6), M("#9a5a32", { roughness: 0.7 }), 5 + i * 3 - 1.4, 5, -3 + i * 2.5 + 0.6)); } for (let i = 0; i < 4; i++) g.add(mesh(new T.SphereGeometry(0.6, 8, 5, 0, 2.5), M("#9a5a32", { side: T.DoubleSide }), 8 + i * 0.9, 0.3, 4 + (i % 2))); return g; }, 11);
+    storia("isacco", () => { const g = new T.Group(); g.add(Pietra(9, 3, 6, "#a49884")); for (let i = 0; i < 5; i++) { const b = mesh(GC(0.25, 0.25, 7, 5), M("#6b4a2b", { tex: "legno" }), 0, 3.3, -2 + i); b.rotation.z = Math.PI / 2; g.add(b); } const is = Steso("#e8e0cc", { donna: false }); is.position.y = 3.3; g.add(is); const ab = P("#6a4a2a", 1.05, { posa: "alzato", donna: false }); ab.position.set(-1, 0, 5.5); ab.rotation.y = Math.PI; g.add(ab); const an = Angelo(); an.position.set(-6, 9, 2); an.rotation.y = 1.4; g.add(an); const c = Cespuglio(0.9); c.position.set(8, 0, -4); g.add(c); const ar = Ariete(); ar.position.set(7.5, 0, -1); ar.rotation.y = 2.4; g.add(ar); return g; }, 10);
+    storia("balaam", () => { const g = new T.Group(), a = Asino(); a.rotation.set(0, 0, 0); g.add(a); const b = Seduto("#5a3a6a"); b.position.set(-0.3, 3.6, 0); b.rotation.y = Math.PI / 2; b.scale.multiplyScalar(0.92); g.add(b); const an = Angelo(); an.position.set(11, 0, 0); an.rotation.y = -Math.PI / 2; g.add(an); const sp = mesh(GB(0.25, 6, 0.6), M("#e8eef4", { metalness: 0.9, roughness: 0.2 }), 10.2, 9, 1.4); sp.rotation.z = 0.5; g.add(sp); for (let i = 0; i < 9; i++) { g.add(Pietra(1.5, 1.2, 1.5, "#b4a890").translateX(-3 + i * 1.8).translateZ(4)); g.add(Pietra(1.5, 1.2, 1.5, "#b4a890").translateX(-3 + i * 1.8).translateZ(-4)); } return g; }, 10);
+    { const st = TAPPE[9 - 1]; let k = 0, bd = 1e9; CR.forEach((q, i) => { const d = (q[0] - st.x + 20) ** 2 + (q[1] - st.y + 30) ** 2; if (d < bd && inCasella(q[0], q[1]) < 0) { bd = d; k = i; } });
+      const q = CR[k], a = CR[Math.min(CR.length - 1, k + 4)], dir = Math.atan2(a[1] - q[1], a[0] - q[0]);
+      storia("mose", () => { const g = new T.Group(), ce = mesh(GC(2.4, 1.9, 1.5, 14, 1, true), M("#a8824a", { tex: "legno", side: T.DoubleSide }), 0, 0.5, 0); ce.scale.set(1.4, 1, 1); const fondo = mesh(GS(1.6, 10, 6), M("#efe6d2"), 0, 0.2, 0); fondo.scale.set(1.5, 0.3, 1); g.add(ce, fondo); g.add(mesh(GS(0.65, 8, 6), M("#d8ad85"), 1, 1.2, 0)); for (let i = 0; i < 16; i++) { const an = (i / 16) * 6.28, rr = 5 + R() * 2, c = mesh(GC(0.08, 0.14, 4 + R() * 3, 4), M("#5a6a2a"), Math.cos(an) * rr * 1.3, 2, Math.sin(an) * rr * 0.7); c.rotation.z = (R() - 0.5) * 0.4; g.add(c); } return g; }, 4, [q[0], q[1], -dir, LIV[k] + 0.3]);
+      const pr = postoLibero(q[0], q[1], 6, 12, 40); if (pr) { nCorr = 10; gCorr = GT[10]; const txt = "Mosè salvato dalle acque · Esodo 2 (storia in più)"; put(info(P("#e8d8a8", 1, { corona: true, donna: true, velo: "#f0e8d0" }), "Figlia del faraone · " + txt), pr[0], pr[1], { rot: R() * 6 }); put(info(P("#6a3a5c", 0.9, { donna: true }), "Miriam · " + txt), pr[0] + 5, pr[1] + 3, { rot: R() * 6 }); STORIE_POS.push([pr[0], pr[1], 7]); } }
+    storia("elia", () => { const g = new T.Group(), fu = M("#ff9a40", { emissive: "#ff5a00", emissiveIntensity: 2.2, roughness: 0.5 }), pts = []; for (let k = 0; k <= 60; k++) { const u = k / 60; pts.push(new T.Vector3(Math.cos(u * 18) * (0.6 + u * 3), u * 17, Math.sin(u * 18) * (0.6 + u * 3))); }
+      g.add(mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts), 140, 0.32, 5), M("#ffc070", { emissive: "#ff7a10", emissiveIntensity: 1.6, transparent: true, opacity: 0.7 }), 0, 0, 0, false));
+      const c = new T.Group(); c.position.set(0, 18, 0); c.rotation.z = 0.35; g.add(c); c.add(mesh(GB(5, 3, 4.4), fu, 0, 1.5, 0)); [-1, 1].forEach((z) => { const w = mesh(new T.TorusGeometry(1.8, 0.3, 6, 16), fu, -0.5, 0.8, z * 2.5); c.add(w); }); [-1.6, 1.6].forEach((z) => { const h = mesh(G_QUAD("#ff8a30", 7, 7, "cavallo"), fu, 7, 0, z); h.rotation.z = 0.25; c.add(h); }); const el = P("#6a4a2a", 0.9, { posa: "alzato", donna: false }); el.position.set(-0.5, 1.5, 0); el.rotation.y = Math.PI / 2; c.add(el); const f = Fuoco(1.1); f.position.set(-2, 0.5, 0); c.add(f);
+      const es = P("#4a5a3a", 1, { posa: "alzato", donna: false }); es.position.set(7, 0, 4); es.rotation.y = -2.2; g.add(es); const ma = mesh(new T.PlaneGeometry(3, 3.5), M("#7a5a3a", { tex: "stoffa", side: T.DoubleSide }), 4, 6, 3); ma.rotation.set(0.4, 0.3, 0.6); g.add(ma); return g; }, 10);
+    storia("giona", GrandePesce, 22, [432, 478, 0.25, 5.2]);
+    storia("fornace", () => { const g = new T.Group(), mm = M("#8a4a32", { tex: "pietra", uv: 6 }), luce = M("#ffb050", { emissive: "#ff6a00", emissiveIntensity: 2.5 });
+      g.add(mesh(GB(16, 12, 2), mm, 0, 6, -6), mesh(GB(2, 12, 12), mm, -7, 6, 0), mesh(GB(2, 12, 12), mm, 7, 6, 0), mesh(GB(16, 2, 12), mm, 0, 12, 0), mesh(GB(4, 10, 2), mm, -5, 5, 6), mesh(GB(4, 10, 2), mm, 5, 5, 6), mesh(GB(16, 3, 2), mm, 0, 10.5, 6), mesh(GC(1.6, 2, 6, 8), mm, 4, 15, -3), mesh(GB(12, 0.3, 10), luce, 0, 0.2, 0, false));
+      [[-3, 0, 0], [0, 0, -2], [3, 0, 0]].forEach(([x, y, z]) => { const p = P(colR(), 0.85, { posa: "alzato", donna: false }); p.position.set(x, y, z); g.add(p); }); const an = P("#fffbe8", 0.9, { velo: false, pelle: "#f8e0c0", capelli: "#f0d080" }); an.position.set(0, 0, 2.5); g.add(an); const fu = Fuoco(0.9); fu.position.set(-3, 0, 3.5); g.add(fu); const fu2 = Fuoco(0.8); fu2.position.set(3, 0, 3.5); g.add(fu2);
+      const re = P("#7a2a5a", 1.05, { corona: true, donna: false }); re.position.set(-10, 0, 13); re.rotation.y = 0.6; g.add(re); const oro = M("#e0b040", { metalness: 0.95, roughness: 0.28 }); g.add(mesh(GB(3, 1.5, 3), oro, 11, 0.75, 12), mesh(GC(0.9, 1.1, 22, 8), oro, 11, 12.5, 12), mesh(GS(1.3, 10, 8), oro, 11, 24.5, 12)); return g; }, 15);
+    storia("ossa", () => { const g = new T.Group(), sab = mesh(new T.CircleGeometry(9, 24), M("#a49e90", { roughness: 1 }), 0, 0.15, 0, false); sab.rotation.x = -Math.PI / 2; sab.scale.set(1, 0.75, 1); g.add(sab); const parts = []; const r = rng(37); for (let i = 0; i < 34; i++) { const a = r() * 6.28, rr = r() * 8; parts.push(parte(GC(0.13, 0.13, 0.8 + r() * 2, 4), "#e8dfc6", Math.cos(a) * rr, 0.25, Math.sin(a) * rr * 0.75, Math.PI / 2, r() * 6, 0)); } for (let i = 0; i < 4; i++) { const a = r() * 6.28, rr = 2 + r() * 5; parts.push(parte(GS(0.6, 8, 6), "#efe6cf", Math.cos(a) * rr, 0.5, Math.sin(a) * rr * 0.75, 0, 0, 0, 1, 0.85, 1.15)); } g.add(mesh(unisci(parts), MV())); const ez = P("#5a4a6a", 1, { posa: "alzato", donna: false }); ez.position.set(-10, 0, 0); ez.rotation.y = Math.PI / 2; g.add(ez); return g; }, 11);
+    { const L = LAGHI[0]; storia("acque", () => { const g = new T.Group(), ge = P("#f2eee4", 1, { posa: "alzato", donna: false, manto: "#a83030", velo: "#e8e2d4" }); ge.position.y = 0.3; ge.rotation.y = 0.8; g.add(ge); const pi = P("#4a5a7a", 1, { posa: "alzato", donna: false }); pi.position.set(3, -4.8, 2); pi.rotation.y = -2.3; g.add(pi); const sc = mesh(new T.RingGeometry(1.4, 2.4, 20), M("#eef6f8", { transparent: true, opacity: 0.7 }), 3, 0.15, 2, false); sc.rotation.x = -Math.PI / 2; g.add(sc); const b = Barca(22); b.position.set(-12, 0, 6); b.rotation.set(0.12, 0.6, 0.06); g.add(b); for (let i = 0; i < 3; i++) { const d = P(colR(), 0.9); d.position.set(-12 + (i - 1) * 4, 1.2, 6 + (i - 1) * 2.2); g.add(d); } return g; }, 14, [L.x - 4, L.y + 3, 0, 5.5]); }
+    storia("zaccheo", () => { const g = new T.Group(), le = M("#6a5038", { tex: "legno" }); g.add(mesh(GC(0.7, 1.2, 10, 7), le, 0, 5, 0)); const r1 = mesh(GC(0.35, 0.55, 6, 5), le, 2, 9, 0); r1.rotation.z = -0.9; const r2 = mesh(GC(0.3, 0.5, 5, 5), le, -1.8, 10, 0.5); r2.rotation.z = 0.8; g.add(r1, r2); const ch = Cespuglio(2.4); ch.position.set(0, 9.5, 0); g.add(ch); const za = Seduto("#8a6a2a"); za.scale.multiplyScalar(0.82); za.position.set(3.4, 10.6, 1.2); za.rotation.y = 2.4; g.add(za); const ge = P("#f2eee4", 1, { posa: "alzato", donna: false, manto: "#a83030", velo: "#e8e2d4" }); ge.position.set(7, 0, 5); ge.rotation.y = -0.8; g.add(ge); for (let i = 0; i < 4; i++) { const f = P(colR()); f.position.set(9 + i * 2.6, 0, 8 - i * 3); f.rotation.y = -1.5; g.add(f); } return g; }, 13);
+    storia("prodigo", () => { const g = new T.Group(); g.add(Casa(10, 9, 9)); const pa = P("#5a4a3a", 1, { posa: "giunte", donna: false }); pa.position.set(8, 0, 1); pa.rotation.y = -Math.PI / 2; const fi = P("#7a6a4a", 0.98, { posa: "giunte", donna: false }); fi.position.set(10, 0, 1); fi.rotation.y = Math.PI / 2; g.add(pa, fi); const pe = M("#6b4a2b", { tex: "legno" }); for (let i = 0; i < 10; i++) { const a = (i / 10) * 6.28; g.add(mesh(GC(0.2, 0.2, 3, 4), pe, 18 + Math.cos(a) * 5, 1.5, -8 + Math.sin(a) * 4)); } const fa = mesh(new T.CircleGeometry(4.6, 16), M("#4a3a28", { roughness: 0.3 }), 18, 0.15, -8, false); fa.rotation.x = -Math.PI / 2; fa.scale.set(1, 0.8, 1); g.add(fa); [[16, -9], [19, -6.5], [20, -10]].forEach(([x, z], i) => { const m = Maiale(); m.position.set(x, 0, z); m.rotation.y = i * 2; g.add(m); }); return g; }, 15);
+    storia("lazzaro", () => { const g = new T.Group(), ro = mesh(deforma(new T.IcosahedronGeometry(8, 2), 0.18, 9), M("#9a8e7c", { tex: "pietra", uv: 10 }), 0, 4, -2); ro.scale.set(1.3, 0.9, 0.8); g.add(ro, mesh(GB(5, 7, 4), M("#14100c"), 0, 3.5, 3)); const pt = mesh(GC(3.8, 3.8, 1.4, 18), M("#a49884", { tex: "pietra", uv: 10 }), 7, 3.8, 4.5); pt.rotation.x = Math.PI / 2; g.add(pt); const la = P("#f4f0e4", 1, { velo: false, pelle: "#efe8da", capelli: "#efe8da", posa: "giunte" }); la.position.set(0, 0, 5.5); g.add(la); const ge = P("#f2eee4", 1, { posa: "alzato", donna: false, manto: "#a83030", velo: "#e8e2d4" }); ge.position.set(-4, 0, 13); ge.rotation.y = Math.PI * 0.95; g.add(ge); [[2, 14], [5, 13]].forEach(([x, z]) => { const d = P(colR(), 1, { donna: true }); d.position.set(x, 0, z); d.rotation.y = Math.PI; g.add(d); }); return g; }, 13);
+    storia("samaritano", () => { const g = new T.Group(), fe = Steso("#d8ccb0", { donna: false }); g.add(fe); g.add(mesh(GB(1.4, 0.4, 2.2), M("#f4f2ee"), -1, 3.2, 0)); const sa = Seduto("#2f5a7a"); sa.position.set(0.5, 0, 3.2); sa.rotation.y = Math.PI; g.add(sa); const a = Asino(); a.position.set(6, 0, 4); a.rotation.y = -0.4; g.add(a); const gh = []; const r = rng(51); for (let i = 0; i < 40; i++) gh.push(parte(new T.IcosahedronGeometry(0.3 + r() * 0.35, 0), "#b8ab92", (r() - 0.5) * 22, 0.15, (r() - 0.5) * 6)); g.add(mesh(unisci(gh), MV(), 0, 0, 0, false)); return g; }, 12);
+  }
   function costruisciScene() {
     FASE_MAT = 10;
     // 1 · Creazione
@@ -961,7 +1039,7 @@
     put(info(Pietra(13, 6, 10), "Altare di Elia con la legna · 1,5 x 1 cm"), 482, 403); put(Fuoco(1.4), 482, 403, { dy: 6 });
     put(P("#6a4a2a", 1, { bastone: true }), 470, 412, { info: "Elia · 1 cm" });
     for (let i = 0; i < 6; i++) put(P("#5a3a6a"), 503 + i * 4, 432 - i * 2, { info: "Profeti di Baal · 1 cm" });
-    { const f = new T.Group(), b = mesh(GS(1, 18, 12), M("#4a5a66", { roughness: 0.35 }), 0, 0, 0); b.scale.set(15, 5, 6); f.add(b); const c = mesh(GK(5, 8, 4), M("#4a5a66"), -16, 0, 0); c.rotation.z = Math.PI / 2; f.add(c); put(info(f, "Grande pesce di Giona · 3 cm"), 440, 476, { h: 6 }); }
+    // il grande pesce di Giona è tra le "storie in più" (in fondo)
     put(Barca(18), 456, 466, { h: 5.5, rot: 0.4, info: "Barchetta · 2 cm" });
     // 16 · Deportazioni
     tappa(16);
@@ -1026,6 +1104,7 @@
     // ponticelli
     tappa(0);
     PONTI.forEach(([x, y]) => { let k = 0, bd = 1e9; CR.forEach((p, i) => { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; k = i; } }); const a = CR[Math.max(0, k - 3)], b = CR[Math.min(CR.length - 1, k + 3)]; put(info(Ponte(), "Ponticello · 4 x 2 cm (dove il fiume incrocia il sentiero)"), x, y, { h: LIV[k] + 3, rot: -Math.atan2(b[1] - a[1], b[0] - a[0]) + Math.PI / 2 }); });
+    if (typeof STORIE !== "undefined") costruisciStorie();
     Object.values(GT).forEach((g) => { compatta(g); reg(g, 10, 99, "scene", "cade"); });
   }
 
@@ -1043,7 +1122,7 @@
       gPieno.add(im); return im;
     }
     const tiles = TAPPE.map((t) => [t.x, t.y]);
-    const vietati = [[195, 150, 50], [305, 82, 28], [360, 436, 32], [NJ.x, NJ.y, 55], [565, 45, 30], [445, 474, 34], [503, 300, 42], [480, 75, 26], [405, 285, 36], [SORGENTE[0], SORGENTE[1], 24]];
+    const vietati = [...STORIE_POS, [195, 150, 50], [305, 82, 28], [360, 436, 32], [NJ.x, NJ.y, 55], [565, 45, 30], [445, 474, 34], [503, 300, 42], [480, 75, 26], [405, 285, 36], [SORGENTE[0], SORGENTE[1], 24]];
     const L = { persona: [], pecora: [], albero: [[], [], [], []], palma: [[], [], []], cipresso: [], ulivo: [[], [], []], tenda: [], casa: [], fiore: [], cespuglio: [[], [], [], []], roccia: [], cammello: [], sasso: [] };
     const tipi = {
       origini: ["albero", "albero", "cespuglio", "fiore", "albero", "pecora", "cespuglio", "roccia", "albero", "fiore"],
@@ -1330,6 +1409,39 @@
     } else renderer.render(scene, camera);
   }
 
+  /* ---------------- inquadrature e foto per il manuale ---------------- */
+  // spec: "davanti" | "alto" | "lato" | "sotto" | "vicino" | "t:10" (tappa) | "z:x,y,d" (punto del tabellone in mm, distanza)
+  function specCam(spec) {
+    if (VISTE[spec]) { const v = VISTE[spec], f = spec === "vicino" || spec === "sotto" ? 1 : fattore(); return [v[1].clone().add(v[0].clone().sub(v[1]).multiplyScalar(f)), v[1].clone()]; }
+    const [k, r] = String(spec).split(":");
+    if (k === "t") { const n = +r, t = TAPPE[n - 1], tg = V(t.x, t.y, HC[n] + 12); return [tg.clone().add(new T.Vector3(n > 19 ? -80 : 60, 85, 125)), tg]; }
+    if (k === "z") { const [x, y, d] = r.split(",").map(Number), tg = V(x, y, hAt(x, y) + 5); return [tg.clone().add(new T.Vector3(d * 0.3, d * 0.68, d * 0.95)), tg]; }
+    return specCam("davanti");
+  }
+  function chiudiAnimazioni() {
+    animInCorso.forEach((a) => { if (a.tipo === "cade") a.p.obj.position.y = a.p.y0; if (a.tipo === "cresce") a.p.obj.scale.y = 1; if (a.tipo === "acqua") aGeo.setDrawRange(0, Infinity); });
+    animInCorso.length = 0;
+    if (animColori) { tCol.set(animColori.a); tGeo.attributes.color.needsUpdate = true; animColori = null; }
+    if (animAltezze) { applicaAltezze(animAltezze.a); animAltezze = null; }
+  }
+  function foto(f, spec, w = 640, h = 420) {
+    if (renderer.domElement.width < 40) return null;
+    chiudiAnimazioni();
+    const prima = ui.fase, cp = camera.position.clone(), ct = controls.target.clone(), esp = ui.esplosoT;
+    ui.fase = f; aggiornaVisibilita(false);
+    Object.values(CAT).forEach((g) => (g.position.y = 0));
+    mats.forEach((m) => { const ud = m.userData; if (!ud.em0 || ud.fase === undefined) return; m.emissive.copy(ud.em0); if (ud.fase === f && f < 14 && f !== 9 && f !== 11) m.emissive.lerp(ORO, 0.16); });
+    const [pp, tt] = specCam(spec); camera.position.copy(pp); camera.lookAt(tt);
+    if (composer) { const dist = pp.distanceTo(tt); tiltH.enabled = tiltV.enabled = ui.miniatura && dist > 140; composer.render(0.016); } else renderer.render(scene, camera);
+    const src = renderer.domElement, c = document.createElement("canvas"); c.width = w; c.height = h;
+    const sa = src.width / src.height, da = w / h; let sw = src.width, sh = src.height, sx = 0, sy = 0;
+    if (sa > da) { sw = sh * da; sx = (src.width - sw) / 2; } else { sh = sw / da; sy = (src.height - sh) / 2; }
+    c.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
+    ui.fase = prima; aggiornaVisibilita(false); ui.esplosoT = esp;
+    camera.position.copy(cp); controls.target.copy(ct); camera.lookAt(ct);
+    return c.toDataURL("image/jpeg", 0.84);
+  }
+
   /* ---------------- anteprima nella scheda ---------------- */
   let prev = null;
   function anteprima(n, el) {
@@ -1362,6 +1474,8 @@
   const API = {
     fase(f) { const prima = ui.fase; ui.fase = f; aggiornaVisibilita(true, prima); },
     opzioni(o) { Object.assign(ui, o); if (o.misura === false && gMisura) { gMisura.clear(); puntoA = null; } aggiornaVisibilita(false); },
+    inquadra(spec, dur = 1200) { fermaTour(); const [p, t] = specCam(spec); vola(p, t, dur); },
+    foto,
     guarda: (a, b, c, d, e, f) => vola(V(a, b, hAt(a, b) + c), V(d, e, hAt(d, e) + f), 10),
     vista, volaTappa, tourFiume, tourTappe, fermaTour,
     esploso(v) { ui.esploso = v ? 1 : 0; },

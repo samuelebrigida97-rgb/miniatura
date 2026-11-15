@@ -76,6 +76,7 @@
     $("#next").disabled = fase === FASI.length;
     $$("#pallini button").forEach((b, i) => { b.classList.toggle("fatto", i + 1 < fase); b.classList.toggle("ora", i + 1 === fase); b.setAttribute("aria-current", i + 1 === fase ? "step" : "false"); });
     salva("fase", fase);
+    if (window.Scena3D) window.Scena3D.fase(fase);
     history.replaceState(null, "", "#fase-" + fase);
     aggiornaTabellone();
   }
@@ -85,7 +86,10 @@
   $$("#pallini button").forEach((b, i) => b.addEventListener("click", () => vai(i + 1)));
   $("#prev").addEventListener("click", () => vai(fase - 1));
   $("#next").addEventListener("click", () => vai(fase + 1));
-  ["#opt-focus", "#opt-sotto", "#opt-notte", "#opt-tilt", "#opt-num"].forEach((s) => $(s).addEventListener("change", aggiornaTabellone));
+  ["#opt-focus", "#opt-sotto", "#opt-notte", "#opt-tilt", "#opt-num"].forEach((s) => $(s).addEventListener("change", () => {
+    aggiornaTabellone();
+    if (window.Scena3D) window.Scena3D.opzioni({ focus: $("#opt-focus").checked, sotto: $("#opt-sotto").checked });
+  }));
   document.addEventListener("keydown", (e) => {
     if ($("#scheda").open || !$("#v-manuale").classList.contains("attiva")) return;
     if (e.key === "ArrowRight") vai(fase + 1);
@@ -117,8 +121,17 @@
       </div>`;
     $(".chiudi", $("#scheda")).addEventListener("click", () => $("#scheda").close());
     $$("[data-go]", $("#scheda")).forEach((b) => b.addEventListener("click", () => apriTappa(+b.dataset.go)));
+    if (window.Scena3D) {
+      const box = document.createElement("div"); box.className = "ante3d";
+      box.innerHTML = `<div class="ante3d-c" id="ante3d"></div><p>Anteprima 3D della tappa: trascinala per girarla.</p><button class="btn primario" id="vai3d">Vai a questa tappa nel diorama 3D</button>`;
+      $(".scheda-corpo", $("#scheda")).insertBefore(box, $(".scheda-corpo h3", $("#scheda")));
+      $("#vai3d").addEventListener("click", () => { $("#scheda").close(); $('[data-view="manuale"]').click(); window.impostaModo && window.impostaModo("3d"); if (fase < 10) vai(10); setTimeout(() => window.Scena3D.volaTappa(n), 150); });
+    }
     if (!$("#scheda").open) $("#scheda").showModal();
+    if (window.Scena3D) requestAnimationFrame(() => window.Scena3D.anteprima(n, $("#ante3d")));
   }
+  window.apriTappa = apriTappa;
+  $("#scheda").addEventListener("close", () => window.Scena3D && window.Scena3D.fermaAnteprima());
   $("#scheda").addEventListener("click", (e) => { if (e.target.id === "scheda") $("#scheda").close(); });
   $$(".hit", svg).forEach((h) => {
     h.addEventListener("click", () => apriTappa(+h.dataset.n));

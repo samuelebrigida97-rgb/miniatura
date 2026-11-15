@@ -225,3 +225,36 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
   .fase-card { padding: 14px; }
   .pallini button { width: 30px; height: 30px; }
 }
+
+/* ---------- vista 3D ---------- */
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--bordo); border-radius: 999px; padding: 2px; }
+.seg button { border: 0; background: transparent; color: var(--ink); font: 600 .82rem system-ui, sans-serif; padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--blu); color: #fff; }
+.seg button:disabled { opacity: .4; cursor: not-allowed; }
+.board-card.modo3d .solo2d, .board-card.modo2d .solo3d { display: none !important; }
+.vista3d { position: relative; width: 100%; aspect-ratio: 16 / 10; max-height: 74vh; border-radius: 12px; overflow: hidden; background: #bcd6ee; touch-action: none; }
+.vista3d canvas { display: block; width: 100% !important; height: 100% !important; }
+@media (max-width: 700px) { .vista3d { aspect-ratio: 1 / 1.05; } }
+.carica3d { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600; color: #2a3a5c; }
+.board-card:fullscreen { background: var(--carta); padding: 10px; display: flex; flex-direction: column; overflow: auto; }
+.board-card:fullscreen .vista3d, .board-card.pseudo-full .vista3d { aspect-ratio: auto; height: calc(100vh - 170px); max-height: none; }
+.board-card.pseudo-full { position: fixed; inset: 0; z-index: 50; border-radius: 0; overflow: auto; }
+.bar3d { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; }
+.bar3d .gr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.bar3d .gr > span { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink2); margin-right: 2px; }
+.bar3d button { font: 500 .8rem system-ui, sans-serif; border: 1px solid var(--bordo); background: var(--bg); color: var(--ink); border-radius: 999px; padding: 5px 11px; cursor: pointer; min-height: 32px; }
+.bar3d button:hover { border-color: var(--blu); }
+.bar3d button[aria-pressed="true"] { background: var(--oro); border-color: #a8781a; color: #fff; }
+#t-stop { background: #c62828; color: #fff; border-color: #c62828; }
+.tip3d { position: absolute; z-index: 3; max-width: 230px; background: rgba(20, 24, 40, .9); color: #fff; padding: 7px 10px; border-radius: 10px; font-size: .8rem; line-height: 1.35; pointer-events: auto; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+.tip3d b { display: block; }
+.tip3d small { display: block; opacity: .8; margin-top: 2px; }
+.tip-btn { margin-top: 6px; border: 0; background: var(--oro); color: #fff; border-radius: 8px; padding: 5px 9px; font: 600 .78rem system-ui; cursor: pointer; }
+.didascalia3d { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2; background: rgba(20, 24, 40, .82); color: #fff; padding: 10px 14px 14px; border-radius: 12px; overflow: hidden; }
+.didascalia3d b { display: block; font-family: Georgia, serif; font-size: 1.15rem; }
+.didascalia3d span { font-size: .85rem; opacity: .9; }
+.didascalia3d i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--oro); transition: width .4s; }
+.ante3d { margin: 12px 0 4px; }
+.ante3d-c { width: 100%; height: 240px; border-radius: 12px; overflow: hidden; background: #e9eef5; touch-action: none; }
+.ante3d p { font-size: .8rem; color: var(--ink2); margin: 4px 0 8px; }
+@media (prefers-reduced-motion: reduce) { .didascalia3d i { transition: none; } }

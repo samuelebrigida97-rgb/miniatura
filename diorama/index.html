@@ -33,15 +33,33 @@
         <div class="col-board">
           <div class="board-card">
             <div class="toolbar">
+              <div class="seg" role="group" aria-label="Tipo di vista">
+                <button id="m3d" aria-pressed="true">3D</button><button id="m2d" aria-pressed="false">Pianta 2D</button>
+              </div>
               <label class="sw"><input type="checkbox" id="opt-focus"><span>Solo novità</span></label>
               <label class="sw"><input type="checkbox" id="opt-sotto"><span>Vedi sotto la base</span></label>
-              <label class="sw"><input type="checkbox" id="opt-notte"><span>Notte</span></label>
-              <label class="sw"><input type="checkbox" id="opt-tilt"><span>Vista inclinata</span></label>
-              <label class="sw"><input type="checkbox" id="opt-num" checked><span>Numeri</span></label>
+              <label class="sw solo2d"><input type="checkbox" id="opt-notte"><span>Notte</span></label>
+              <label class="sw solo2d"><input type="checkbox" id="opt-tilt"><span>Vista inclinata</span></label>
+              <label class="sw solo2d"><input type="checkbox" id="opt-num" checked><span>Numeri</span></label>
             </div>
-            <div class="board-wrap" id="board-wrap"></div>
+            <div class="vista3d solo3d" id="vista3d"><div class="carica3d" id="carica3d">Sto costruendo il diorama in 3D…</div></div>
+            <div class="bar3d solo3d" id="bar3d">
+              <div class="gr"><span>Guarda</span>
+                <button data-vista="davanti">Davanti</button><button data-vista="alto">Dall'alto</button><button data-vista="lato">Di lato</button><button data-vista="vicino">Da vicino</button><button data-vista="sotto">Da sotto</button>
+              </div>
+              <div class="gr"><span>Viaggia</span>
+                <button id="t-fiume">▶ Lungo il fiume</button><button id="t-tappe">▶ Tappa per tappa</button><button id="t-stop" hidden>■ Ferma</button>
+              </div>
+              <div class="gr"><span>Luce</span>
+                <button data-ora="alba">Alba</button><button data-ora="giorno" aria-pressed="true">Giorno</button><button data-ora="tramonto">Tramonto</button><button data-ora="notte">Notte</button><button id="b-centralina">⟳ Centralina</button>
+              </div>
+              <div class="gr"><span>Strumenti</span>
+                <button id="b-esploso" aria-pressed="false">Esploso</button><button id="b-misura" aria-pressed="false">📏 Misura</button><button id="b-full">⛶ Schermo intero</button>
+              </div>
+            </div>
+            <div class="board-wrap solo2d" id="board-wrap"></div>
             <p class="novita" id="novita"></p>
-            <p class="hint">Tocca una casella per aprire la scheda della tappa.</p>
+            <p class="hint solo3d">Trascina per girare · due dita o rotellina per ingrandire · tocca una casella o un pezzo per scoprire cos'è.</p><p class="hint solo2d">Tocca una casella per aprire la scheda della tappa.</p>
           </div>
 
           <div class="nav-fasi">
@@ -80,6 +98,7 @@
     <section id="v-info" class="view testo">
       <h2>Come leggere questo manuale</h2>
       <ul>
+        <li><b>Vista 3D</b>: trascina per girare il diorama, usa la rotellina o due dita per avvicinarti. Tocca un pezzo per sapere cos'è e quanto misura. Con <b>Esploso</b> vedi gli strati separati (impianto, base, terreno, scene); con <b>Misura</b> tocchi due punti e leggi la distanza in cm.</li>
         <li><b>Il tabellone</b> è disegnato in scala, visto dall'alto: 80 x 50 cm. Il righello in basso misura 10 cm.</li>
         <li>Con <b>Fase successiva</b> vedi cosa aggiungere: le novità <span class="evid">brillano in oro</span>. Attiva <b>Solo novità</b> per vedere solo quelle.</li>
         <li><b>Vedi sotto la base</b> mostra vaschetta, tubo e cavi nascosti (linee tratteggiate).</li>
@@ -120,6 +139,10 @@
 
   <script src="js/data.js"></script>
   <script src="js/board.js"></script>
+  <script src="js/vendor/three.min.js"></script>
+  <script src="js/vendor/OrbitControls.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/scena3d.js"></script>
+  <script src="js/collega3d.js"></script>
 </body>
 </html>

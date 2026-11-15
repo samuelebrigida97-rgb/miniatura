@@ -86,6 +86,7 @@
     TEX.strati = { map: texC(tela(64, (x, y) => { const v = Math.floor(y / 6.4) % 2 ? 0.95 : 0.72; return [220 * v, 180 * v, 128 * v]; })) };
     { const n = rumore(512, 6, 81); TEX.betulla = { map: texC(tela(512, (x, y) => { const v = 0.82 + 0.12 * Math.sin(y * 0.05 + n[y * 512 + x] * 14) + n[y * 512 + x] * 0.08; return [236 * v, 206 * v, 160 * v]; })) }; }
     { const n = rumore(512, 6, 91); TEX.noce = { map: texC(tela(512, (x, y) => { const v = 0.55 + 0.25 * Math.sin(y * 0.04 + n[y * 512 + x] * 18) + n[y * 512 + x] * 0.15; return [120 * v, 78 * v, 48 * v]; })) }; }
+    { const n = rumore(512, 6, 131), m = rumore(512, 4, 137); TEX.roccia = { map: texC(tela(512, (x, y) => { const k = y * 512 + x, st = 0.6 + 0.22 * Math.sin(y * 0.21 + n[k] * 7 + m[k] * 3) + 0.25 * (n[k] - 0.5) + (Math.abs(Math.sin(y * 0.09 + n[k] * 4)) < 0.06 ? -0.25 : 0); return [205 * st, 192 * st, 176 * st]; })) }; }
     { const n = rumore(256, 5, 97); TEX.terra = { map: texC(tela(256, (x, y) => { const s = 0.75 + 0.2 * Math.sin(y * 0.18 + n[y * 256 + x] * 6) + n[y * 256 + x] * 0.12; return [132 * s, 100 * s, 70 * s]; })) }; }
     const sprite = (fn) => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); fn(x); const t = new T.CanvasTexture(c); t.encoding = T.sRGBEncoding; return t; };
     TEX.fiamma = sprite((x) => { const g = x.createRadialGradient(32, 38, 0, 32, 32, 30); g.addColorStop(0, "rgba(255,240,180,1)"); g.addColorStop(0.3, "rgba(255,170,60,.9)"); g.addColorStop(0.7, "rgba(230,70,10,.35)"); g.addColorStop(1, "rgba(120,20,0,0)"); x.fillStyle = g; x.fillRect(0, 0, 64, 64); });
@@ -96,7 +97,8 @@
   /* =========================================================
      RENDERER, CAMERA, CIELO, LUCI, POST-PRODUZIONE
      ========================================================= */
-  let renderer, scene, camera, controls, sky, sole, luna, hemi, pmrem, envScene, envSky, envRT, stelleCielo, composer, bloom, tiltH, tiltV;
+  const NUVOLE = [];
+  let renderer, scene, camera, controls, sky, sole, luna, hemi, pmrem, envScene, envSky, envRT, stelleCielo, composer, bloom, tiltH, tiltV, finale;
   function preparaMotore() {
     renderer = new T.WebGLRenderer({ antialias: !Q.post, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Q.pr));
@@ -113,7 +115,12 @@
     pmrem = new T.PMREMGenerator(renderer);
     { const n = 2500, p = new Float32Array(n * 3), r = rng(5); for (let i = 0; i < n; i++) { const u = r() * 2 - 1, a = r() * Math.PI * 2, s = Math.sqrt(1 - u * u); p.set([Math.cos(a) * s * 20000, Math.abs(u) * 20000, Math.sin(a) * s * 20000], i * 3); }
       const g = new T.BufferGeometry(); g.setAttribute("position", new T.BufferAttribute(p, 3));
-      stelleCielo = new T.Points(g, new T.PointsMaterial({ color: "#ffffff", size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false })); scene.add(stelleCielo); }
+      stelleCielo = new T.Points(g, new T.PointsMaterial({ color: "#ffffff", size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false })); scene.add(stelleCielo); }
+    scene.fog = new T.FogExp2("#c9d8e6", 0.00022);
+    { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d"), r = rng(17);
+      for (let i = 0; i < 26; i++) { const cx = 20 + r() * 88, cy = 50 + r() * 34, rad = 14 + r() * 26, g = x.createRadialGradient(cx, cy, 0, cx, cy, rad); g.addColorStop(0, "rgba(255,255,255,.55)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, 128, 128); }
+      const tn = new T.CanvasTexture(c); tn.encoding = T.sRGBEncoding; NUVOLE.length = 0; const r2 = rng(19);
+      for (let i = 0; i < 16; i++) { const sp = new T.Sprite(new T.SpriteMaterial({ map: tn, color: "#ffffff", transparent: true, opacity: 0.85, depthWrite: false, fog: false })); const a = r2() * Math.PI * 2, d = 7000 + r2() * 5000; sp.position.set(Math.cos(a) * d, 1800 + r2() * 2600, Math.sin(a) * d); sp.scale.set(5000 + r2() * 4000, 2000 + r2() * 1200, 1); sp.userData.a = a; sp.userData.d = d; scene.add(sp); NUVOLE.push(sp); } }
     hemi = new T.HemisphereLight("#cfe2ff", "#6b5a40", 0.35); scene.add(hemi);
     sole = new T.DirectionalLight("#fff1dc", 2.6); sole.castShadow = true;
     sole.shadow.mapSize.set(Q.ombra, Q.ombra);
@@ -129,11 +136,11 @@
       bloom = new T.UnrealBloomPass(new T.Vector2(512, 512), 0.18, 0.55, 0.88); composer.addPass(bloom);
       tiltH = new T.ShaderPass(T.HorizontalTiltShiftShader); tiltV = new T.ShaderPass(T.VerticalTiltShiftShader);
       composer.addPass(tiltH); composer.addPass(tiltV);
-      composer.addPass(new T.ShaderPass({
-        uniforms: { tDiffuse: { value: null }, vign: { value: 0.32 } },
+      finale = new T.ShaderPass({
+        uniforms: { tDiffuse: { value: null }, vign: { value: 0.3 }, tempo: { value: 0 }, sat: { value: 1.12 } },
         vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-        fragmentShader: "uniform sampler2D tDiffuse; uniform float vign; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); float d = distance(vUv, vec2(0.5)); c.rgb *= mix(1.0, smoothstep(0.85, 0.3, d), vign); vec3 l = max(c.rgb, vec3(0.0)); vec3 s = mix(l * 12.92, 1.055 * pow(l, vec3(1.0/2.4)) - 0.055, step(vec3(0.0031308), l)); gl_FragColor = vec4(s, 1.0); }",
-      }));
+        fragmentShader: "uniform sampler2D tDiffuse; uniform float vign; uniform float tempo; uniform float sat; varying vec2 vUv; float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); } void main(){ vec4 c = texture2D(tDiffuse, vUv); float d = distance(vUv, vec2(0.5)); c.rgb *= mix(1.0, smoothstep(0.85, 0.3, d), vign); vec3 l = max(c.rgb, vec3(0.0)); vec3 s = mix(l * 12.92, 1.055 * pow(l, vec3(1.0/2.4)) - 0.055, step(vec3(0.0031308), l)); float y = dot(s, vec3(0.299, 0.587, 0.114)); s = mix(vec3(y), s, sat); s = (s - 0.5) * 1.06 + 0.5; s += vec3(0.012, 0.004, -0.012) * (1.0 - y); s += (rnd(vUv * 900.0 + tempo) - 0.5) * 0.018; gl_FragColor = vec4(clamp(s, 0.0, 1.0), 1.0); }",
+      }); composer.addPass(finale);
     }
   }
 
@@ -422,7 +429,7 @@
     for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
       const x = i * ST, y = j * ST, h0 = HCAR[j * NX + i]; let occ = 0;
       for (const [dx, dy] of dirs) { let m = 0; for (const s of [4, 9, 18, 34]) m = Math.max(m, (campH(HCAR, x + dx * s, y + dy * s) - h0) / s); occ += Math.min(1, Math.atan(m) / 1.2); }
-      AO[j * NX + i] = 1 - (occ / 8) * 0.75;
+      AO[j * NX + i] = 1 - (occ / 8) * 0.55;
     }
   }
 
@@ -470,6 +477,19 @@
     for (let j = 0; j < NY - 1; j++) for (let i = 0; i < NX - 1; i++) { const a = j * NX + i, b = a + 1, c = a + NX, d = c + 1; idx.set([a, c, b, b, c, d], q); q += 6; }
     tGeo.setIndex(new T.BufferAttribute(idx, 1)); tGeo.setAttribute("position", new T.BufferAttribute(tPos, 3)); tGeo.setAttribute("color", new T.BufferAttribute(tCol, 3)); tGeo.setAttribute("uv", new T.BufferAttribute(uv, 2));
     tMat = regMat(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, map: TEX.terreno.map, normalMap: TEX.terreno.normal, normalScale: new T.Vector2(1.1, 1.1) }), 4);
+    const uRoccia = { value: 0 }; tMat.userData.roccia = uRoccia;
+    tMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uRoccia = uRoccia; sh.uniforms.tRoccia = { value: TEX.roccia.map };
+      sh.vertexShader = "varying vec3 vWP; varying vec3 vWN;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n vWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);");
+      sh.fragmentShader = "uniform float uRoccia; uniform sampler2D tRoccia; varying vec3 vWP; varying vec3 vWN;\n" + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
+        if (uRoccia > 0.0) {
+          vec3 n = normalize(vWN); vec3 b = pow(abs(n), vec3(4.0)); b /= (b.x + b.y + b.z);
+          vec3 rc = texture2D(tRoccia, vWP.zy / 46.0).rgb * b.x + texture2D(tRoccia, vWP.xz / 46.0).rgb * b.y + texture2D(tRoccia, vWP.xy / 46.0).rgb * b.z;
+          float f = smoothstep(0.28, 0.62, 1.0 - n.y) * uRoccia;
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * rc * 1.75, f);
+        }`);
+    };
+    tMat.customProgramCacheKey = () => "terreno-roccia";
     const terreno = new T.Mesh(tGeo, tMat); terreno.receiveShadow = terreno.castShadow = true; terreno.name = "terreno";
     bordoIdx = []; for (let i = 0; i < NX; i++) bordoIdx.push(i); for (let j = 1; j < NY; j++) bordoIdx.push(j * NX + NX - 1); for (let i = NX - 2; i >= 0; i--) bordoIdx.push((NY - 1) * NX + i); for (let j = NY - 2; j >= 0; j--) bordoIdx.push(j * NX);
     sGeo = new T.BufferGeometry(); sPos = new Float32Array(bordoIdx.length * 6); const sUv = new Float32Array(bordoIdx.length * 4), sI = [];
@@ -546,8 +566,9 @@
     if (st === statoTerreno) return;
     const prima = statoTerreno; statoTerreno = st;
     const H = st === "schiuma" ? HRAW : HCAR;
-    tMat.userData.fase = sMat.userData.fase = { schiuma: 4, scavato: 5, gesso: 6, dipinto: 8 }[st];
-    sMat.color.set(st === "gesso" ? "#e8e5dc" : st === "dipinto" ? "#ffffff" : "#e3bf62"); sMat.map = st === "dipinto" ? TEX.terra.map : null; sMat.needsUpdate = true;
+    tMat.userData.fase = sMat.userData.fase = { schiuma: 4, scavato: 5, gesso: 6, dipinto: 8, pieno: 8 }[st];
+    tMat.userData.roccia.value = st === "dipinto" || st === "pieno" ? 1 : st === "schiuma" || st === "scavato" ? 0.35 : 0;
+    const dip = st === "dipinto" || st === "pieno"; sMat.color.set(st === "gesso" ? "#e8e5dc" : dip ? "#ffffff" : "#e3bf62"); sMat.map = dip ? TEX.terra.map : null; sMat.needsUpdate = true;
     if (anima && prima) {
       animColori = { da: tCol.slice(), a: COLORI[st], t0: performance.now(), dur: 1100 };
       const daH = new Float32Array(NX * NY); for (let k = 0; k < NX * NY; k++) daH[k] = tPos[k * 3 + 1];
@@ -918,6 +939,17 @@
     const canne = []; for (let q = 0; q < CR.length - 1; q += 2) { if (r() < 0.45) continue; const p = CR[q], s = r() < 0.5 ? -1 : 1, a = Math.atan2(CR[q + 1][1] - p[1], CR[q + 1][0] - p[0]) + Math.PI / 2, d = 8 + r() * 4, x = p[0] + Math.cos(a) * d * s, y = p[1] + Math.sin(a) * d * s; if (inCasella(x, y) >= 0 || cella(DP, x, y) < 16) continue; canne.push([x, y, hAt(x, y), r() * 6, 1, "#5a8a3a", [0.7, 2.6 + r() * 1.5, 0.7]]); }
     inst(ciuffo, erbaMat, canne, true, false);
     reg(gPieno, 11, 99, "pieno", "cade");
+    // ombre di contatto: il terreno si scurisce sotto alberi, case, tende, rocce e scene
+    const ombre = [];
+    L.albero.flat().forEach((a) => ombre.push([a[0], a[1], 9 * a[4], 0.45])); L.ulivo.flat().forEach((a) => ombre.push([a[0], a[1], 7 * a[4], 0.4])); L.palma.flat().forEach((a) => ombre.push([a[0], a[1], 5, 0.3]));
+    L.cipresso.forEach((a) => ombre.push([a[0], a[1], 4.5, 0.4])); L.cespuglio.flat().forEach((a) => ombre.push([a[0], a[1], 4 * a[4], 0.4]));
+    L.casa.forEach((a) => ombre.push([a[0], a[1], 8 * a[4], 0.45])); L.tenda.forEach((a) => ombre.push([a[0], a[1], 7, 0.4])); L.roccia.forEach((a) => ombre.push([a[0], a[1], 2.6 * a[4], 0.4]));
+    L.persona.forEach((a) => ombre.push([a[0], a[1], 3, 0.25])); L.pecora.forEach((a) => ombre.push([a[0], a[1], 3, 0.2])); L.cammello.forEach((a) => ombre.push([a[0], a[1], 6, 0.3]));
+    HITS.forEach((h) => { const r = Math.max(h.scale.x, h.scale.z) / 2 + 2; if (r < 60) ombre.push([h.position.x + 400, h.position.z + 250, r, 0.35]); });
+    const P2 = COLORI.dipinto.slice(), fatt = new Float32Array(NX * NY).fill(1);
+    ombre.forEach(([x, y, r, k]) => { const ci = Math.round(x / ST), cj = Math.round(y / ST), rr = Math.ceil(r / ST); for (let j = cj - rr; j <= cj + rr; j++) for (let i = ci - rr; i <= ci + rr; i++) { if (i < 0 || j < 0 || i >= NX || j >= NY) continue; const d = Math.hypot(i * ST - x, j * ST - y) / r; if (d < 1) fatt[j * NX + i] *= 1 - k * Math.pow(1 - d, 1.4); } });
+    for (let c = 0; c < NX * NY; c++) { const f = Math.max(0.45, fatt[c]); P2[c * 3] *= f; P2[c * 3 + 1] *= f; P2[c * 3 + 2] *= f; }
+    COLORI.pieno = P2;
   }
 
   /* ---------------- targhette (12) e sfondo (13) ---------------- */
@@ -952,7 +984,7 @@
   try { ui.miniatura = localStorage.getItem("diorama-miniatura") !== "0"; } catch (e) {}
   const ORA = {
     alba:     { el: 7, az: 110, sole: 2.0, sc: "#ffb27a", hemi: 0.25, luci: 0.6, esp: 1.0, notte: 0 },
-    giorno:   { el: 48, az: 155, sole: 2.4, sc: "#fff1dc", hemi: 0.2, luci: 0, esp: 0.8, notte: 0 },
+    giorno:   { el: 48, az: 155, sole: 2.4, sc: "#fff1dc", hemi: 0.3, luci: 0, esp: 0.8, notte: 0 },
     tramonto: { el: 5, az: 250, sole: 1.9, sc: "#ff8c55", hemi: 0.22, luci: 0.7, esp: 1.0, notte: 0 },
     notte:    { el: -14, az: 290, sole: 0, sc: "#9fb6ff", hemi: 0.06, luci: 1, esp: 1.15, notte: 1 },
   };
@@ -965,6 +997,8 @@
     sole.position.copy(d).multiplyScalar(1400); sole.intensity = oraVal.sole * Math.max(0, Math.min(1, (oraVal.el + 2) / 8)); sole.color.copy(oraVal.sc);
     luna.intensity = oraVal.notte * 0.5; hemi.intensity = oraVal.hemi; renderer.toneMappingExposure = oraVal.esp;
     stelleCielo.material.opacity = oraVal.notte;
+    scene.fog.color.setRGB(0.78, 0.84, 0.9).lerp(oraVal.sc, 0.35).multiplyScalar(1 - oraVal.notte * 0.88);
+    NUVOLE.forEach((n) => { n.material.opacity = 0.75 * (1 - oraVal.notte * 0.85); n.material.color.setRGB(1, 1, 1).lerp(oraVal.sc, 0.45).multiplyScalar(1 - oraVal.notte * 0.75); });
     if (bloom) bloom.strength = 0.16 + oraVal.luci * 0.85;
     if (forza || Math.abs(envUlt.el - oraVal.el) > 1.5 || Math.abs(envUlt.az - oraVal.az) > 6) {
       envUlt.el = oraVal.el; envUlt.az = oraVal.az;
@@ -976,7 +1010,7 @@
     const f = ui.fase;
     pezzi.forEach((p) => { let vis = f >= p.from && f <= p.until; if (p.cat === "sotto") vis = vis && (f === p.from || ui.sotto); if (p.cat === "carta") vis = f === 1; p.obj.visible = vis; });
     gSotto.visible = f >= 3 && (f === 3 || ui.sotto); alimentatore.visible = f >= 3;
-    impostaTerreno(f >= 8 ? "dipinto" : f >= 6 ? "gesso" : f >= 5 ? "scavato" : "schiuma", anima);
+    impostaTerreno(f >= 11 ? "pieno" : f >= 8 ? "dipinto" : f >= 6 ? "gesso" : f >= 5 ? "scavato" : "schiuma", anima);
     if (anima) avviaAnimazioni(f, prima);
     applicaEvidenza();
   }
@@ -1113,7 +1147,7 @@
       tiltH.enabled = tiltV.enabled = on;
       const amt = Math.min(3, Math.max(1, dist / 260));
       tiltH.uniforms.h.value = amt / wrap.clientWidth; tiltV.uniforms.v.value = amt / wrap.clientHeight; tiltH.uniforms.r.value = tiltV.uniforms.r.value = 0.52;
-      composer.render(dt);
+      finale.uniforms.tempo.value = (t % 10); composer.render(dt);
     } else renderer.render(scene, camera);
   }
 

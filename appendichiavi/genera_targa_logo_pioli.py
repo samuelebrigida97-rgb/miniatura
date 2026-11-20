@@ -6,6 +6,7 @@ Stampa: retro sul piatto, un solo filamento (nero), senza supporti.
 """
 import os
 import numpy as np
+from scipy import ndimage as ndi
 import trimesh
 from PIL import Image, ImageFilter
 from skimage import measure
@@ -17,7 +18,7 @@ IMG = os.path.join(HERE, "logo_opane_ro_paese.jpg")
 
 R, T = 100.0, 10.0
 RIM_W = 4.0
-ENGRAVE = 2.0                 # profondità delle parti chiare
+ENGRAVE = 1.0                 # profondità delle parti chiare (cambio colore a T-ENGRAVE = 9 mm)
 THRESH = 80
 MIN_AREA = 0.25
 # logo: px 40 (cima titolo) .. px 990 (fondo del nastro) -> y da 76 a -66 mm
@@ -30,7 +31,7 @@ CAP_W, CAP_D, CAP_T, CHAMFER = 18.0, 16.0, 5.0, 3.5
 PEG_Y, PEG_X = -79.0, (-36.0, 0.0, 36.0)
 # asola a chiave (vite Ø4, testa fino a Ø9)
 KEY_Y = 40.0
-HEAD_D, SHANK_W, SLOT_L, LIP, CH_D = 9.6, 4.6, 12.0, 2.5, 6.0
+HEAD_D, SHANK_W, SLOT_L, LIP, CH_D = 9.6, 4.6, 12.0, 3.0, 7.0
 
 def extrude(gs, h, z0):
     out = []
@@ -53,6 +54,20 @@ im = im.resize((W * UP, H * UP), Image.BICUBIC).filter(ImageFilter.GaussianBlur(
 a = np.asarray(im).astype(float)
 mask = (a < THRESH).astype(float)
 mask[CROP_BOTTOM_PX * UP:, :] = 0
+
+# --- dettagli stampabili con ugello 0.4: allarga i bianchi troppo stretti (occhi, denti),
+#     poi ingrossa le linee nere troppo sottili (priorità alle linee) ---
+def _disk(r):
+    y, x = np.mgrid[-r:r + 1, -r:r + 1]
+    return x * x + y * y <= r * r
+_d = mask > 0.5
+_l = ~_d
+_thin_l = _l & ~ndi.binary_opening(_l, structure=_disk(3))
+_l = _l | (ndi.binary_dilation(_thin_l, structure=_disk(2)) & ~ndi.binary_erosion(_d, structure=_disk(2)))
+_d = ~_l
+_thin_d = _d & ~ndi.binary_opening(_d, structure=_disk(3))
+_d = _d | ndi.binary_dilation(_thin_d, structure=_disk(2))
+mask = _d.astype(float)
 mask = np.pad(mask, 1)
 s = MM_PX / UP
 x0 = W * UP / 2 + 1
